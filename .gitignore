@@ -1,0 +1,6 @@
+# 个人/会话数据，禁止提交
+.workbuddy/
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

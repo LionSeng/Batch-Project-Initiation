@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>批量立项文件生成器</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+         background: #f5f6f8; color: #1f2329; font-size: 14px; line-height: 1.5; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 18px 60px; }
+  header { background: #fff; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  header h1 { margin: 0 0 6px; font-size: 20px; }
+  header p { margin: 0; color: #6b7280; font-size: 13px; }
+  .card { background: #fff; border-radius: 10px; padding: 18px 20px; margin-top: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .card h2 { font-size: 15px; margin: 0 0 12px; padding-left: 9px; border-left: 4px solid #2f6fed; }
+  .hint { color: #8a9099; font-size: 12px; margin: 0 0 12px; }
+
+  /* ① 区头部：可折叠 + 客户下拉 */
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+  .card-head h2 { margin: 0; }
+  .head-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cust-box { font-size: 13px; color: #4b5563; display: inline-flex; align-items: center; gap: 6px; }
+  .cust-box select { border: 1px solid #d4d7dd; border-radius: 6px; padding: 7px 10px; font-size: 14px; background: #fff; min-width: 210px; max-width: 320px; }
+  .cust-box select:focus { outline: none; border-color: #2f6fed; box-shadow: 0 0 0 3px rgba(47,111,237,.08); }
+  .collapse-btn { border: 1px solid #d4d7dd; background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; color: #374151; }
+  .collapse-btn:hover { background: #eef1f6; }
+  .global-body.collapsed { display: none; }
+  input.gin[readonly] { background: #f3f4f6; color: #6b7280; cursor: not-allowed; }
+
+  /* ② 每行客户选择组 */
+  .cust-row { background: #f7faff; border: 1px solid #dbe5fa; border-radius: 8px; padding: 10px 12px 12px; margin-bottom: 4px; }
+  .cust-row > label { display: block; font-size: 13px; color: #2f5fb8; margin-bottom: 6px; font-weight: 600; }
+  .cust-grid { display: grid; grid-template-columns: 2fr 1.4fr 1fr 1.1fr; gap: 8px 12px; align-items: end; }
+  .cf-cell span { display: block; font-size: 12px; color: #6b7280; margin-bottom: 3px; }
+  .cust-grid input.cin[readonly] { background: #fff; color: #374151; border-style: dashed; cursor: default; }
+  .cust-row select.cin, .cust-row input.cin { padding: 9px 10px; font-size: 14px; }
+
+  /* ④ 预览表格 */
+  .preview-wrap { overflow-x: auto; border: 1px solid #e6e8eb; border-radius: 8px; background: #fff; max-height: 560px; overflow-y: auto; }
+  #previewTable { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+  #previewTable th, #previewTable td { border: 1px solid #eef0f3; padding: 7px 9px; text-align: left; white-space: nowrap; }
+  #previewTable thead th { background: #f5f7fa; color: #374151; font-weight: 600; position: sticky; top: 0; }
+  #previewTable .gh { background: #eef2f9; color: #2f6fed; text-align: center; font-size: 13px; font-weight: 600; }
+  #previewTable tbody tr:nth-child(even) td { background: #fbfcfd; }
+  #previewTable .miss { color: #c0392b; }
+  #previewTable .money { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ① 全局默认值 */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px 16px; }
+  .gitem { display: flex; flex-direction: column; }
+  .gitem label { font-size: 12px; color: #4b5563; margin-bottom: 4px; font-weight: 500; }
+  input.gin, select.gin { border: 1px solid #d4d7dd; border-radius: 6px; padding: 9px 11px; font-size: 14px; background: #fff; width: 100%; }
+  input.gin:focus, select.gin:focus { outline: none; border-color: #2f6fed; box-shadow: 0 0 0 3px rgba(47,111,237,.08); }
+
+  /* ② 项目卡片 */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 14px; }
+  button.act { border: none; border-radius: 7px; padding: 9px 18px; font-size: 14px; cursor: pointer; font-weight: 500; }
+  .b-primary { background: #2f6fed; color: #fff; }
+  .b-primary:hover { background: #285fcf; }
+  .b-ghost { background: #eef1f6; color: #374151; }
+  .b-ghost:hover { background: #e2e6ee; }
+
+  #rows { display: flex; flex-direction: column; gap: 12px; }
+  .rowcard { background: #fbfcfd; border: 1px solid #e6e8eb; border-radius: 10px; padding: 14px 16px 16px; }
+  .rowhead { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px dashed #e6e8eb; }
+  .rownum { font-weight: 600; color: #2f6fed; font-size: 14px; }
+  .btn-del { background: #fff; border: 1px solid #f0b4b4; color: #c0392b; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+  .btn-del:hover { background: #fdeaea; }
+  .rowbody { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { display: block; font-size: 13px; color: #4b5563; margin-bottom: 5px; font-weight: 500; }
+  .field input, .field select { width: 100%; border: 1px solid #d4d7dd; border-radius: 7px; padding: 10px 12px; font-size: 15px; background: #fff; }
+  .field input:focus, .field select:focus { outline: none; border-color: #2f6fed; box-shadow: 0 0 0 3px rgba(47,111,237,.10); }
+  .field input[type="number"] { text-align: right; font-variant-numeric: tabular-nums; }
+  .inpratio { display: flex; align-items: center; gap: 8px; }
+  .inpratio input { flex: 1; }
+  .ratio { font-weight: 600; color: #0a7d3e; font-size: 14px; white-space: nowrap; min-width: 56px; }
+  .pgroup { display: flex; flex-wrap: wrap; gap: 10px; }
+  .pitem { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #e6e8eb; border-radius: 7px; padding: 6px 10px; }
+  .pitem em { font-style: normal; color: #6b7280; font-size: 13px; font-weight: 600; }
+  .pitem input { width: 80px; border: none; padding: 4px 6px; font-size: 14px; text-align: right; background: transparent; }
+  .pitem input:focus { outline: none; }
+  .pitem:focus-within { border-color: #2f6fed; }
+
+  /* ③ 选项 */
+  .files label { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; font-size: 13px; }
+  .status { margin-top: 12px; padding: 10px 12px; border-radius: 7px; white-space: pre-wrap; font-size: 13px; }
+  .status.ok { background: #eaf7ee; color: #0a7d3e; border: 1px solid #bfe6cb; }
+  .status.err { background: #fdeaea; color: #c0392b; border: 1px solid #f3c4c4; }
+  .count-badge { background: #2f6fed; color: #fff; border-radius: 10px; padding: 1px 9px; font-size: 12px; }
+  footer { color: #9aa1ab; font-size: 12px; margin-top: 18px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>批量立项文件生成器</h1>
+    <p>月底申报执行额 / 立项用。客户、项目编号、起止日期和金额每个项目不同，其余信息每月基本不变，已预填，<b>改一次即可</b>。</p>
+  </header>
+
+  <div class="card" id="gcard">
+    <div class="card-head">
+      <h2>① 公司归口与分类（每月基本不变，可改）</h2>
+      <button class="collapse-btn" id="toggle-g" type="button">收起 ▾</button>
+    </div>
+    <div class="global-body" id="global-body">
+      <p class="hint">这里填的是公司侧字段（合同归属、营销/客户成功部门与负责人、一级类型/标签、行业、产品类型、供应商等）。客户（编号、简称、性质）按每个项目不同，放在 ② 每张项目卡片顶部选。</p>
+      <div class="grid" id="global-fields"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 每个项目（点“添加项目”加一行）<span class="count-badge" id="count">0</span> 个</h2>
+    <p class="hint">每张卡片顶部选客户（编号自动锁定唯一）。下面填：项目名称、项目编号、起止日期、项目金额、预算金额、决算金额。"预算占比"自动按 预算 ÷ 项目 算；决算金额留空 = 等于预算。P1–P5 人天默认 0。</p>
+    <div class="toolbar">
+      <button class="act b-primary" id="add" type="button">+ 添加项目</button>
+      <button class="act b-ghost" id="sample" type="button">填充示例数据（测试用）</button>
+      <button class="act b-ghost" id="clear" type="button">清空</button>
+    </div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="card files">
+    <h2>③ 选择要生成的文件（默认全选）</h2>
+    <label><input type="checkbox" id="f_budget" checked> API预算决算 - 2026.xlsx</label>
+    <label><input type="checkbox" id="f_sales" checked> 批量立项目-销管-模板.xlsx</label>
+    <label><input type="checkbox" id="f_project" checked> 批量立项文件.xlsx</label>
+    <div class="toolbar">
+      <button class="act b-ghost" id="previewBtn" type="button">预览（核对每个项目要写的所有字段）</button>
+      <button class="act b-primary" id="gen" type="button">生成并下载</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <h2>④ 预览 <span id="previewHint" style="font-weight:normal;color:#6b7280;font-size:13px;margin-left:6px;">每个项目一行，所有要写入 3 个文件的字段（含 ① 公司归口与 ② 每行客户）展开看清楚</span></h2>
+    <div class="preview-wrap"><table id="previewTable"></table></div>
+  </div>
+
+  <footer>本页面完全离线运行，数据不出本机。生成逻辑已用样例数据校验，公式与数值均正确。</footer>
+</div>
+
+<!--SHEETJS-->
+<!--JSZIP-->
+<!--CUSTOMERS-->
+<!--GEN-->
+<!--APP-->
+</body>
+</html>

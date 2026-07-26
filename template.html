@@ -63,7 +63,12 @@
   .b-ghost:hover { background: #e2e6ee; }
 
   #rows { display: flex; flex-direction: column; gap: 12px; }
-  .rowcard { background: #fbfcfd; border: 1px solid #e6e8eb; border-radius: 10px; padding: 14px 16px 16px; }
+  .rowcard { position: relative; overflow: hidden; background: #fbfcfd; border: 1px solid #e6e8eb; border-radius: 10px; padding: 14px 16px 16px; transition: box-shadow .2s; }
+  .rowcard:hover { box-shadow: 0 4px 16px rgba(0,0,0,.07); }
+  /* ② 卡片左侧强调色条：按客户编码 hash 上色，便于在列表中一眼区分项目 */
+  .accent { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: transparent; border-radius: 10px 0 0 10px; }
+  /* ② 卡片头部重复提醒 */
+  .dup-tag { font-size: 11px; font-weight: 600; color: #b45309; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
   .rowhead { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 1px dashed #e6e8eb; gap: 12px; }
   .head-left { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; }
   .rownum { font-weight: 700; color: #fff; background: linear-gradient(135deg,#2f6fed,#6366f1); border-radius: 6px; padding: 2px 9px; font-size: 12px; flex-shrink: 0; }

@@ -84,6 +84,10 @@
         if (codeInp) codeInp.value = c.code;
         if (shInp) shInp.value = c.short || c.name;
         if (nmInp) nmInp.value = c.name;
+        // 程序化赋值不会触发 oninput，这里手动派发，通知卡片头部/左色条等监听刷新
+        if (codeInp) codeInp.dispatchEvent(new Event('input', { bubbles: true }));
+        if (shInp) shInp.dispatchEvent(new Event('input', { bubbles: true }));
+        if (nmInp) nmInp.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
     function currentItems() {

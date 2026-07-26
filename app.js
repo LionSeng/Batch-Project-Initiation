@@ -169,12 +169,20 @@
     headRight.appendChild(clientTag);
     headRight.appendChild(amtBadge);
     headRight.appendChild(dateBadge);
+    var dupTag = el('span', { class: 'dup-tag' }, [document.createTextNode('⚠ 重复')]);
+    dupTag.style.display = 'none';
+    headRight.appendChild(dupTag);
     var del = el('button', { type: 'button', class: 'btn-del' }, [document.createTextNode('删除')]);
     headRight.appendChild(del);
     head.appendChild(headRight);
 
-    card._head = { idx: idxSpan, title: titleEl, sub: subEl, clientTag: clientTag, amtBadge: amtBadge, dateBadge: dateBadge };
+    card._head = { idx: idxSpan, title: titleEl, sub: subEl, clientTag: clientTag, amtBadge: amtBadge, dateBadge: dateBadge, dup: dupTag };
+    // 左侧强调色条（按客户编码 hash 上色，列表里一眼区分）
+    var accent = el('span', { class: 'accent' });
+    card._accent = accent;
+    card.appendChild(accent);
     card.appendChild(head);
+    setAccent(card);
 
     // 顶部：每行的客户选择组
     card.appendChild(makeCustRow(data));
@@ -227,6 +235,7 @@
     var sdInp = card.querySelector('[data-f="startDate"]');
     var edInp = card.querySelector('[data-f="endDate"]');
     var csInp = card.querySelector('[data-f="clientShort"]');
+    var codeInp = card.querySelector('[data-f="clientCode"]');
 
     function refreshHead() {
       if (!card._head) return;
@@ -244,6 +253,9 @@
       // 客户简称
       var cs = csInp ? csInp.value.trim() : '';
       h.clientTag.textContent = cs || '未选客户';
+      // 左侧色条 + 重复检测
+      setAccent(card);
+      checkDuplicates();
     }
 
     var onAmt = function () { recomputeRatio(card); refreshHead(); };
@@ -253,11 +265,12 @@
     if (sdInp) sdInp.oninput = refreshHead;
     if (edInp) edInp.oninput = refreshHead;
     if (csInp) csInp.oninput = refreshHead;
+    if (codeInp) codeInp.oninput = refreshHead;
     var crInp = card.querySelector('[data-f="costRate"]');
     if (crInp) crInp.oninput = function () { applyCostRateRow(card); };
 
     // 删除
-    del.onclick = function () { card.parentNode.removeChild(card); updateCount(); };
+    del.onclick = function () { card.parentNode.removeChild(card); updateCount(); saveDraft(); };
 
     return card;
   }
@@ -318,6 +331,7 @@
     cards.forEach(function (c, i) {
       if (c._head && c._head.idx) c._head.idx.textContent = i + 1;
     });
+    checkDuplicates();
   }
 
   /* ---------- 从项目库导入（生成器是消费者：只读取，不回写） ---------- */
@@ -387,6 +401,7 @@
       addRow(data);
       n++;
     });
+    saveDraft();
     closeImport();
     showStatus('已引用 ' + n + ' 个项目到 ② 区，可检查后到 ③ 生成。', false);
     $('rows').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -429,6 +444,9 @@
       project: $('f_project').checked
     };
 
+    var btn = $('gen');
+    var oldText = btn.textContent;
+
     var errors = [];
     projects.forEach(function (p, i) {
       var n = i + 1;
@@ -448,6 +466,7 @@
     try {
       var files = buildWorkbooks(g, projects, opts);
       if (typeof JSZip === 'undefined') { showStatus('压缩库未加载，无法打包，请刷新页面。', true); return; }
+      btn.disabled = true; btn.textContent = '生成中…';
       var zip = new JSZip();
       files.forEach(function (f) {
         var wb = XLSX.utils.book_new();
@@ -458,9 +477,14 @@
       zip.generateAsync({ type: 'blob' }).then(function (blob) {
         downloadBlob(blob, '批量立项文件_' + stamp() + '.zip');
         showStatus('已生成 ' + files.length + ' 个文件，开始下载压缩包。', false);
+      }).catch(function (err) {
+        showStatus('生成出错：' + (err && err.message ? err.message : err), true);
+      }).finally(function () {
+        btn.disabled = false; btn.textContent = oldText;
       });
     } catch (e) {
       showStatus('生成出错：' + (e && e.message ? e.message : e), true);
+      btn.disabled = false; btn.textContent = oldText;
     }
   }
 
@@ -573,6 +597,59 @@
     finally { try { localStorage.removeItem('bpi_import_queue'); } catch (e) {} }
   }
 
+  /* ---------- 草稿自动保存（防刷新/误关丢数据） ---------- */
+  var DRAFT_KEY = 'bpi_draft_v1';
+  var draftTimer = null;
+  function saveDraft() {
+    try {
+      var data = { global: readGlobal(), projects: readProjects() };
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+  function scheduleSave() {
+    if (draftTimer) clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveDraft, 400);
+  }
+  function restoreDraft() {
+    try {
+      var raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return false;
+      var d = JSON.parse(raw);
+      if (!d || !Array.isArray(d.projects) || !d.projects.length) return false;
+      if (d.global) Object.keys(d.global).forEach(function (k) {
+        var i = $('g_' + k); if (i) i.value = d.global[k];
+      });
+      $('rows').innerHTML = '';
+      d.projects.forEach(function (p) { addRow(p); });
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ---------- 卡片视觉增强：左色条 + 重复检测 ---------- */
+  function hashHueColor(str) {
+    var h = 0; str = String(str || '');
+    for (var i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) >>> 0; }
+    return 'hsl(' + (h % 360) + ',62%,55%)';
+  }
+  function setAccent(card) {
+    if (!card._accent) return;
+    var codeInp = card.querySelector('[data-f="clientCode"]');
+    var code = codeInp ? codeInp.value.trim() : '';
+    card._accent.style.background = code ? hashHueColor(code) : 'transparent';
+  }
+  function checkDuplicates() {
+    var cards = $('rows').querySelectorAll('.rowcard');
+    var seen = {};
+    cards.forEach(function (c) {
+      var name = (c.querySelector('[data-f="name"]').value || '').trim().toLowerCase();
+      var code = (c.querySelector('[data-f="clientCode"]').value || '').trim().toLowerCase();
+      var key = name + '|' + code;
+      var isDup = !!(name && seen[key]);
+      if (name) seen[key] = true;
+      if (c._head && c._head.dup) c._head.dup.style.display = isDup ? '' : 'none';
+    });
+  }
+
   /* ---------- 初始化 ---------- */
   function init() {
     buildGlobalForm();
@@ -582,18 +659,25 @@
       queued.forEach(function (p) { addRow(p); });
       showStatus('已根据你从看板选择的 ' + queued.length + ' 个项目预填立项行，请核对客户与金额后生成。', false);
       $('rows').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else if (restoreDraft()) {
+      showStatus('已恢复上次未提交的草稿（共 ' + $('rows').querySelectorAll('.rowcard').length + ' 个项目）。如需重新开始，点「清空」。', false);
     } else {
       addRow(); // 起始一行空白
     }
+    // 表单输入自动存草稿（防刷新/误关丢数据）
+    $('rows').addEventListener('input', scheduleSave);
     $('add').onclick = function () { addRow(); };
     $('sample').onclick = function () {
       $('rows').innerHTML = '';
       SAMPLE.forEach(function (p) { addRow(p); });
+      saveDraft();
       showStatus('已填入示例数据（仅供测试，正式申报请改成真实项目）。', false);
     };
     $('clear').onclick = function () {
+      if (!confirm('确定清空所有项目行？此操作不可撤销，草稿也会一并清除。')) return;
       $('rows').innerHTML = '';
       updateCount();
+      try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
       showStatus('已清空项目行。', false);
     };
     $('gen').onclick = generate;

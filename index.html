@@ -109,12 +109,12 @@
   .cust-list li:hover, .cust-list li.active { background: #eef2f9; }
   .cust-list .cust-empty { color: #9aa1ab; cursor: default; }
 
-  /* 顶部导航（项目库 / 批量立项 两个独立页面） */
+  /* 顶部导航（三 tab 统一布局） */
   .topnav { background: #fff; border-radius: 10px; padding: 10px 16px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .topnav a, .topnav .nav-cur { text-decoration: none; font-size: 14px; padding: 7px 14px; border-radius: 7px; color: #374151; }
+  .topnav a, .topnav .nav-cur { text-decoration: none; font-size: 14px; padding: 7px 14px; border-radius: 7px; color: #374151; font-weight:600; white-space:nowrap; flex:0 0 auto; }
   .topnav a { background: #eef1f6; }
   .topnav a:hover { background: #e2e6ee; }
-  .topnav .nav-cur { background: #2f6fed; color: #fff; font-weight: 600; }
+  .topnav .nav-cur { background: #2f6fed; color: #fff; }
   .topnav .nav-tip { margin-left: auto; color: #8a9099; font-size: 12px; }
 
   /* ② 卡片头部右侧：按钮 + 客户/金额/日期标签 */
@@ -143,10 +143,10 @@
 <body>
 <div class="wrap">
   <nav class="topnav">
-    <a href="dashboard.html#lib">① 项目库（准备立项的项目）</a>
-    <a href="dashboard.html">📊 看板（总览）</a>
+    <a href="dashboard.html">📊 立项总览</a>
     <span class="nav-cur">② 批量立项文件生成器</span>
-    <span class="nav-tip">先在 ① 项目库存好待立项项目，再到这里引用生成</span>
+    <a href="dashboard.html#archive">③ 历史项目库</a>
+    <span class="nav-tip">看板总览 + 项目库维护 + 历史归档，共用同一份数据</span>
   </nav>
 
   <header>

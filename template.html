@@ -29,9 +29,10 @@
   input.gin[readonly] { background: #f3f4f6; color: #6b7280; cursor: not-allowed; }
 
   /* ② 每行客户选择组 */
-  .cust-row { background: #f7faff; border: 1px solid #dbe5fa; border-radius: 8px; padding: 10px 12px 12px; margin-bottom: 4px; }
+  .cust-row { background: #f7faff; border: 1px solid #dbe5fa; border-radius: 8px; padding: 10px 12px 12px; margin-bottom: 4px; overflow: visible; }
   .cust-row > label { display: block; font-size: 13px; color: #2f5fb8; margin-bottom: 6px; font-weight: 600; }
-  .cust-grid { display: grid; grid-template-columns: 2fr 1.4fr 1fr 1.1fr; gap: 8px 12px; align-items: end; }
+  .cust-grid { display: grid; grid-template-columns: 2fr 1.4fr 1fr 1.1fr; gap: 8px 12px; align-items: end; overflow: visible; }
+  .cf-cell { overflow: visible; position: relative; }
   .cf-cell span { display: block; font-size: 12px; color: #6b7280; margin-bottom: 3px; }
   .cust-grid input.cin[readonly] { background: #fff; color: #374151; border-style: dashed; cursor: default; }
   .cust-row select.cin, .cust-row input.cin { padding: 9px 10px; font-size: 14px; }
@@ -90,13 +91,55 @@
   .status.err { background: #fdeaea; color: #c0392b; border: 1px solid #f3c4c4; }
   .count-badge { background: #2f6fed; color: #fff; border-radius: 10px; padding: 1px 9px; font-size: 12px; }
   footer { color: #9aa1ab; font-size: 12px; margin-top: 18px; text-align: center; }
+
+  /* ② 客户搜索组合框 */
+  .cust-combo { position: relative; z-index: 10; }
+  .cust-search { width: 100%; }
+  .cust-list { position: absolute; z-index: 9999; left: 0; right: 0; top: calc(100% + 4px); margin: 0; padding: 4px 0; list-style: none; background: #fff; border: 1px solid #c9ccd3; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.18); max-height: 260px; overflow-y: auto; }
+  .cust-list li { padding: 8px 12px; cursor: pointer; font-size: 14px; }
+  .cust-list li:hover, .cust-list li.active { background: #eef2f9; }
+  .cust-list .cust-empty { color: #9aa1ab; cursor: default; }
+
+  /* 顶部导航（项目库 / 批量立项 两个独立页面） */
+  .topnav { background: #fff; border-radius: 10px; padding: 10px 16px; margin-top: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .topnav a, .topnav .nav-cur { text-decoration: none; font-size: 14px; padding: 7px 14px; border-radius: 7px; color: #374151; }
+  .topnav a { background: #eef1f6; }
+  .topnav a:hover { background: #e2e6ee; }
+  .topnav .nav-cur { background: #2f6fed; color: #fff; font-weight: 600; }
+  .topnav .nav-tip { margin-left: auto; color: #8a9099; font-size: 12px; }
+
+  /* ② 卡片头部右侧按钮组 */
+  .head-right { display: flex; gap: 8px; }
+
+  /* 从项目库导入：弹窗 */
+  .modal-mask { position: fixed; inset: 0; background: rgba(17,24,39,.42); display: none; align-items: flex-start; justify-content: center; z-index: 10000; padding: 40px 16px; }
+  .modal-mask.open { display: flex; }
+  .modal { background: #fff; border-radius: 12px; width: 100%; max-width: 880px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #eef0f3; }
+  .modal-head h3 { margin: 0; font-size: 16px; }
+  .modal-x { border: none; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: #9aa1ab; }
+  .modal-body { overflow-y: auto; padding: 8px 20px 16px; }
+  .modal-foot { display: flex; gap: 10px; align-items: center; padding: 12px 20px; border-top: 1px solid #eef0f3; }
+  .modal-foot .lib-meta { margin-left: auto; color: #6b7280; font-size: 12px; }
+  .imp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .imp-table th, .imp-table td { border: 1px solid #eef0f3; padding: 8px 10px; text-align: left; }
+  .imp-table thead th { background: #f5f7fa; color: #374151; font-weight: 600; position: sticky; top: 0; }
+  .imp-table .money { text-align: right; font-variant-numeric: tabular-nums; }
+  .imp-empty { padding: 18px; color: #9aa1ab; text-align: center; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <nav class="topnav">
+    <a href="dashboard.html#lib">① 项目库（准备立项的项目）</a>
+    <a href="dashboard.html">📊 看板（总览）</a>
+    <span class="nav-cur">② 批量立项文件生成器</span>
+    <span class="nav-tip">先在 ① 项目库存好待立项项目，再到这里引用生成</span>
+  </nav>
+
   <header>
     <h1>批量立项文件生成器</h1>
-    <p>月底申报执行额 / 立项用。客户、项目编号、起止日期和金额每个项目不同，其余信息每月基本不变，已预填，<b>改一次即可</b>。</p>
+    <p>月底申报执行额 / 立项用。客户、项目编号、起止日期和金额每个项目不同，其余信息每月基本不变，已预填，<b>改一次即可</b>。项目从「① 项目库」引用进来。</p>
   </header>
 
   <div class="card" id="gcard">
@@ -117,6 +160,7 @@
       <button class="act b-primary" id="add" type="button">+ 添加项目</button>
       <button class="act b-ghost" id="sample" type="button">填充示例数据（测试用）</button>
       <button class="act b-ghost" id="clear" type="button">清空</button>
+      <button class="act b-ghost" id="btnImport" type="button">从项目库导入…</button>
     </div>
     <div id="rows"></div>
   </div>
@@ -139,11 +183,33 @@
   </div>
 
   <footer>本页面完全离线运行，数据不出本机。生成逻辑已用样例数据校验，公式与数值均正确。</footer>
+
+  <!-- 从项目库导入：弹窗 -->
+  <div class="modal-mask" id="importMask">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>从项目库引用项目</h3>
+        <button class="modal-x" id="importX" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <div style="overflow-x:auto;">
+          <table class="imp-table" id="importTable"></table>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <label class="cust-box"><input type="checkbox" id="importSelAll"> 全选</label>
+        <button class="act b-primary" id="importDo" type="button">引用选中 (0)</button>
+        <button class="act b-ghost" id="importCancel" type="button">取消</button>
+        <span class="lib-meta" id="importMeta">项目库共 0 个</span>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!--SHEETJS-->
 <!--JSZIP-->
 <!--CUSTOMERS-->
+<!--PICKER-->
 <!--GEN-->
 <!--APP-->
 </body>

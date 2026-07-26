@@ -5,6 +5,7 @@ tpl = (base / 'template.html').read_text(encoding='utf-8')
 sheetjs = (base / 'vendor' / 'xlsx.full.min.js').read_text(encoding='utf-8')
 jszip = (base / 'vendor' / 'jszip.min.js').read_text(encoding='utf-8')
 customers = (base / 'customers.js').read_text(encoding='utf-8')
+picker = (base / 'picker.js').read_text(encoding='utf-8')
 gen = (base / 'gen.js').read_text(encoding='utf-8')
 app = (base / 'app.js').read_text(encoding='utf-8')
 
@@ -18,11 +19,12 @@ out = tpl
 out = out.replace('<!--SHEETJS-->', '<script>\n' + safe(sheetjs) + '\n</script>')
 out = out.replace('<!--JSZIP-->', '<script>\n' + safe(jszip) + '\n</script>')
 out = out.replace('<!--CUSTOMERS-->', '<script>\n' + safe(customers) + '\n</script>')
+out = out.replace('<!--PICKER-->', '<script>\n' + safe(picker) + '\n</script>')
 out = out.replace('<!--GEN-->', '<script>\n' + safe(gen) + '\n</script>')
 out = out.replace('<!--APP-->', '<script>\n' + safe(app) + '\n</script>')
 
 # 兜底：若仍有未替换的标记，报警
-for marker in ['<!--SHEETJS-->', '<!--JSZIP-->', '<!--CUSTOMERS-->', '<!--GEN-->', '<!--APP-->']:
+for marker in ['<!--SHEETJS-->', '<!--JSZIP-->', '<!--CUSTOMERS-->', '<!--PICKER-->', '<!--GEN-->', '<!--APP-->']:
     if marker in out:
         raise SystemExit('未替换的标记: ' + marker)
 

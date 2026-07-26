@@ -78,22 +78,7 @@
   }
 
   /* ---------- ② 每行客户选择组（来自 customers.js 内联） ---------- */
-  function buildCustPicker(parent, initialCode) {
-    var sel = el('select', { class: 'cin cust-picker' });
-    sel.appendChild(el('option', { value: '' }, [document.createTextNode('— 选择客户 —')]));
-    var list = (typeof CUSTOMERS !== 'undefined') ? CUSTOMERS : [];
-    var seen = {};
-    list.forEach(function (c) { var k = c.short || c.name; seen[k] = (seen[k] || 0) + 1; });
-    list.forEach(function (c) {
-      var base = c.short || c.name;
-      var label = base + (seen[base] > 1 ? ' · ' + c.code.slice(-6) : '');
-      var op = el('option', { value: c.code, title: c.name + '  (' + c.code + ')' }, [document.createTextNode(label)]);
-      if (initialCode && c.code === initialCode) op.selected = true;
-      sel.appendChild(op);
-    });
-    parent.appendChild(sel);
-    return sel;
-  }
+  /* buildCustPicker 已抽到 picker.js（生成器与项目库共用），此处直接使用全局函数 */
 
   function makeCustRow(data) {
     var wrap = el('div', { class: 'field full' });
@@ -143,25 +128,6 @@
     return wrap;
   }
 
-  function bindCustRow(card) {
-    var picker = card.querySelector('.cust-picker');
-    if (!picker) return;
-    picker.onchange = function () {
-      var code = picker.value;
-      var codeInp = card.querySelector('[data-f="clientCode"]');
-      var shInp = card.querySelector('[data-f="clientShort"]');
-      var nmInp = card.querySelector('[data-f="clientName"]');
-      if (!code) { if (codeInp) codeInp.value = ''; if (shInp) shInp.value = ''; if (nmInp) nmInp.value = ''; return; }
-      var list = (typeof CUSTOMERS !== 'undefined') ? CUSTOMERS : [];
-      var c = null;
-      for (var i = 0; i < list.length; i++) { if (list[i].code === code) { c = list[i]; break; } }
-      if (!c) return;
-      if (codeInp) codeInp.value = c.code;
-      if (shInp) shInp.value = c.short || c.name;
-      if (nmInp) nmInp.value = c.name;
-    };
-  }
-
   /* ---------- 项目行（卡片式：顶部客户 + 7 字段 + 5 人天） ---------- */
   var ROW_FIELDS = [
     { f: 'name',        t: 'text',   label: '项目名称',       span: 'full' },
@@ -170,6 +136,7 @@
     { f: 'endDate',     t: 'date',   label: '结束日期',       span: 'half' },
     { f: 'amount',      t: 'number', label: '项目金额（元）', span: 'half', ph: '合同总金额' },
     { f: 'budget',      t: 'number', label: '预算金额（元）', span: 'half', ph: '预算', withRatio: true },
+    { f: 'costRate',    t: 'number', label: '成本率（%）',     span: 'half', ph: '如 60' },
     { f: 'finalAmount', t: 'number', label: '决算金额（元）', span: 'full', ph: '留空则等于预算金额' },
     { f: 'p1', t: 'number', label: 'P1 人天', span: 'compact' },
     { f: 'p2', t: 'number', label: 'P2 人天', span: 'compact' },
@@ -187,8 +154,10 @@
     // 顶部：项目名 + 删除
     var head = el('div', { class: 'rowhead' });
     head.appendChild(el('span', { class: 'rownum' }, [document.createTextNode('项目')]));
+    var headRight = el('div', { class: 'head-right' });
     var del = el('button', { type: 'button', class: 'btn-del' }, [document.createTextNode('删除此项目')]);
-    head.appendChild(del);
+    headRight.appendChild(del);
+    head.appendChild(headRight);
     card.appendChild(head);
 
     // 顶部：每行的客户选择组
@@ -241,9 +210,8 @@
     var onAmt = function () { recomputeRatio(card); };
     amtInp.oninput = onAmt;
     budInp.oninput = onAmt;
-
-    // 绑定客户下拉联动
-    bindCustRow(card);
+    var crInp = card.querySelector('[data-f="costRate"]');
+    if (crInp) crInp.oninput = function () { applyCostRateRow(card); };
 
     // 删除
     del.onclick = function () { card.parentNode.removeChild(card); updateCount(); };
@@ -262,9 +230,20 @@
     }
   }
 
+  function applyCostRateRow(card) {
+    var amt = parseFloat(card.querySelector('[data-f="amount"]').value);
+    var cr = parseFloat(card.querySelector('[data-f="costRate"]').value);
+    if (amt > 0 && !isNaN(cr)) {
+      card.querySelector('[data-f="budget"]').value = (amt * cr / 100).toFixed(2);
+      recomputeRatio(card);
+    }
+  }
+
   function addRow(data) {
     var card = makeRow(data);
     $('rows').appendChild(card);
+    var cr = card.querySelector('[data-f="costRate"]');
+    if (cr && cr.value !== '') applyCostRateRow(card);
     recomputeRatio(card);
     updateCount();
     return card;
@@ -287,6 +266,82 @@
 
   function updateCount() {
     $('count').textContent = $('rows').querySelectorAll('.rowcard').length;
+  }
+
+  /* ---------- 从项目库导入（生成器是消费者：只读取，不回写） ---------- */
+  var LIB_KEY = 'bpi_project_library_v1';
+
+  function libRead() {
+    try { var s = localStorage.getItem(LIB_KEY); return s ? JSON.parse(s) : []; }
+    catch (e) { return []; }
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c];
+    });
+  }
+  function escAttr(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function openImport() {
+    var arr = libRead();
+    var tbl = $('importTable');
+    $('importMeta').textContent = '项目库共 ' + arr.length + ' 个项目';
+    if (!arr.length) {
+      tbl.innerHTML = '<tbody><tr><td class="imp-empty">项目库为空。请先到「① 项目库」页面添加待立项项目。</td></tr></tbody>';
+    } else {
+      var head = '<thead><tr><th style="width:34px;"></th><th>项目名称</th><th>客户</th><th>金额</th><th>起止日期</th><th>项目编号</th></tr></thead>';
+      var body = '<tbody>';
+      arr.forEach(function (x) {
+        var amt = (x.amount && !isNaN(parseFloat(x.amount)))
+          ? Number(x.amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+        body += '<tr>';
+        body += '<td><input type="checkbox" class="imp-chk" data-id="' + escAttr(x.id) + '"></td>';
+        body += '<td>' + escHtml(x.name || '—') + '</td>';
+        body += '<td>' + escHtml(x.clientShort || x.clientName || '—') + '</td>';
+        body += '<td class="money">' + amt + '</td>';
+        body += '<td>' + escHtml(x.startDate || '?') + ' ~ ' + escHtml(x.endDate || '?') + '</td>';
+        body += '<td>' + escHtml(x.projCode || '—') + '</td>';
+        body += '</tr>';
+      });
+      body += '</tbody>';
+      tbl.innerHTML = head + body;
+      tbl.querySelectorAll('.imp-chk').forEach(function (cb) { cb.onchange = updateImportBtn; });
+    }
+    $('importSelAll').checked = false;
+    updateImportBtn();
+    $('importMask').classList.add('open');
+  }
+
+  function updateImportBtn() {
+    var n = $('importTable').querySelectorAll('.imp-chk:checked').length;
+    $('importDo').textContent = '引用选中 (' + n + ')';
+  }
+
+  function doImport() {
+    var checked = $('importTable').querySelectorAll('.imp-chk:checked');
+    if (!checked.length) { showStatus('请先在项目库勾选要立项的项目。', true); return; }
+    var arr = libRead();
+    var ids = {};
+    Array.prototype.forEach.call(checked, function (cb) { ids[cb.getAttribute('data-id')] = true; });
+    var n = 0;
+    arr.forEach(function (x) {
+      if (!ids[x.id]) return;
+      var data = {};
+      for (var k in x) if (k !== 'id' && k !== 'savedAt') data[k] = x[k];
+      addRow(data);
+      n++;
+    });
+    closeImport();
+    showStatus('已引用 ' + n + ' 个项目到 ② 区，可检查后到 ③ 生成。', false);
+    $('rows').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function closeImport() {
+    $('importMask').classList.remove('open');
   }
 
   /* ---------- 生成 ---------- */
@@ -316,25 +371,26 @@
     var projects = readProjects();
     if (projects.length === 0) { showStatus('请至少添加一个项目。', true); return; }
 
-    var errors = [];
-    projects.forEach(function (p, i) {
-      var n = i + 1;
-      if (!p.name) errors.push('第' + n + '行：缺少“项目名称”');
-      if (!p.projCode) errors.push('第' + n + '行：缺少“项目编号”');
-      if (!p.startDate) errors.push('第' + n + '行：缺少“开始日期”');
-      if (!p.endDate) errors.push('第' + n + '行：缺少“结束日期”');
-      if (!p.amount || isNaN(parseFloat(p.amount))) errors.push('第' + n + '行：项目金额必须是数字');
-      if (!p.budget || isNaN(parseFloat(p.budget))) errors.push('第' + n + '行：预算金额必须是数字');
-      if (!p.clientCode) errors.push('第' + n + '行：未选客户（卡片顶部）');
-      if (!p.clientNature) errors.push('第' + n + '行：缺少“客户性质”');
-    });
-    if (errors.length) { showStatus('有错误：\n' + errors.join('\n'), true); return; }
-
     var opts = {
       budget: $('f_budget').checked,
       sales: $('f_sales').checked,
       project: $('f_project').checked
     };
+
+    var errors = [];
+    projects.forEach(function (p, i) {
+      var n = i + 1;
+      if (!p.name) errors.push('第' + n + '行：缺少"项目名称"');
+      if (opts.budget && !p.projCode) errors.push('第' + n + '行：缺少"项目编号"（仅在生成「API预算决算」时需要）');
+      if (!p.startDate) errors.push('第' + n + '行：缺少"开始日期"');
+      if (!p.endDate) errors.push('第' + n + '行：缺少"结束日期"');
+      if (!p.amount || isNaN(parseFloat(p.amount))) errors.push('第' + n + '行：项目金额必须是数字');
+      if (!p.budget || isNaN(parseFloat(p.budget))) errors.push('第' + n + '行：预算金额必须是数字');
+      if (!p.clientCode) errors.push('第' + n + '行：未选客户（卡片顶部）');
+      if (!p.clientNature) errors.push('第' + n + '行：缺少"客户性质"');
+    });
+    if (errors.length) { showStatus('有错误：\n' + errors.join('\n'), true); return; }
+
     if (!opts.budget && !opts.sales && !opts.project) { showStatus('请至少勾选一个要生成的文件。', true); return; }
 
     try {
@@ -356,7 +412,7 @@
     }
   }
 
-  /* ---------- ④ 预览 ---------- */
+  /* ---------- ④ 预览（根据文件勾选动态显示列） ---------- */
   function fmtMoney(v) {
     if (v == null || isNaN(v)) return '—';
     return Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -365,9 +421,17 @@
   function preview() {
     var g = readGlobal();
     var cards = $('rows').querySelectorAll('.rowcard');
+    var hasBudget = $('f_budget').checked;   // File1: API预算决算（含项目编号）
+    var hasSales = $('f_sales').checked;     // File2: 销管模板
+    var hasProject = $('f_project').checked;  // File3: 批量立项文件
+
+    // 根据勾选动态决定列——"项目编号"仅在生成 File1 时才需要展示
+    var basicCols = ['#', '项目名称'];
+    if (hasBudget) basicCols.push('项目编号');
+    basicCols.push('起止日期', '项目金额', '预算金额', '决算金额', '预算占比');
 
     var groups = [
-      { label: '基本信息', cols: ['#', '项目名称', '项目编号', '起止日期', '项目金额', '预算金额', '决算金额', '预算占比'] },
+      { label: '基本信息', cols: basicCols },
       { label: '客户信息', cols: ['客户简称', '客户全称', '客户编号', '客户性质'] },
       { label: '归口人员', cols: ['归属业务部门', '归属主体', '合同归属', '申请人', '项目经理'] },
       { label: '分类类型', cols: ['一级类型', '主项目类型', '子项目类型', '项目行业', '产品类型', '体验主题', '收入类型'] },
@@ -397,7 +461,7 @@
 
         var miss = [];
         if (!p.name) miss.push('name');
-        if (!p.projCode) miss.push('code');
+        if (hasBudget && !p.projCode) miss.push('code');
         if (!p.startDate || !p.endDate) miss.push('date');
         if (!p.clientCode) miss.push('cust');
         if (!p.clientNature) miss.push('nature');
@@ -415,7 +479,7 @@
         html += '<tr>';
         html += '<td>' + (idx + 1) + '</td>';
         html += C(p.name, miss.indexOf('name') >= 0);
-        html += C(p.projCode, miss.indexOf('code') >= 0);
+        if (hasBudget) html += C(p.projCode, miss.indexOf('code') >= 0);
         html += C((p.startDate || '?') + ' ~ ' + (p.endDate || '?'), miss.indexOf('date') >= 0);
         html += M(amt); html += M(bud); html += M(fin);
         html += '<td class="money">' + (ratio > 0 ? ratio.toFixed(2) + '%' : '—') + '</td>';
@@ -440,10 +504,35 @@
     if (pv && typeof pv.scrollIntoView === 'function') pv.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  /* ---------- 看板多选 → 批量立项 交接 ---------- */
+  function consumeQueue() {
+    try {
+      var raw = localStorage.getItem('bpi_import_queue');
+      if (!raw) return [];
+      var items = JSON.parse(raw);
+      if (!Array.isArray(items)) return [];
+      var out = items.map(function (x) {
+        var d = {};
+        for (var k in x) if (k !== 'id' && k !== 'savedAt') d[k] = x[k];
+        return d;
+      });
+      return out;
+    } catch (e) { return []; }
+    finally { try { localStorage.removeItem('bpi_import_queue'); } catch (e) {} }
+  }
+
   /* ---------- 初始化 ---------- */
   function init() {
     buildGlobalForm();
-    addRow(); // 起始一行空白
+    var queued = consumeQueue();
+    if (queued.length) {
+      $('rows').innerHTML = '';
+      queued.forEach(function (p) { addRow(p); });
+      showStatus('已根据你从看板选择的 ' + queued.length + ' 个项目预填立项行，请核对客户与金额后生成。', false);
+      $('rows').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      addRow(); // 起始一行空白
+    }
     $('add').onclick = function () { addRow(); };
     $('sample').onclick = function () {
       $('rows').innerHTML = '';
@@ -464,6 +553,18 @@
       this.textContent = collapsed ? '展开 ▸' : '收起 ▾';
     };
     updateCount();
+
+    /* ---------- 从项目库导入（弹窗） ---------- */
+    $('btnImport').onclick = openImport;
+    $('importX').onclick = closeImport;
+    $('importCancel').onclick = closeImport;
+    $('importSelAll').onchange = function () {
+      var v = this.checked;
+      $('importTable').querySelectorAll('.imp-chk').forEach(function (cb) { cb.checked = v; });
+      updateImportBtn();
+    };
+    $('importDo').onclick = doImport;
+    $('importMask').addEventListener('click', function (e) { if (e.target === this) closeImport(); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

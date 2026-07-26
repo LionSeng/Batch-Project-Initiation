@@ -151,13 +151,29 @@
     data = data || {};
     var card = el('div', { class: 'rowcard' });
 
-    // 顶部：项目名 + 删除
+    // 顶部：信息丰富的项目头部（名称/客户/金额/日期一目了然）
     var head = el('div', { class: 'rowhead' });
-    head.appendChild(el('span', { class: 'rownum' }, [document.createTextNode('项目')]));
+    var headLeft = el('div', { class: 'head-left' });
+    var idxSpan = el('span', { class: 'rownum' }, [document.createTextNode('')]); // 占位，渲染后填序号
+    var titleEl = el('div', { class: 'card-title' + (!data.name ? ' placeholder' : '') }, [document.createTextNode(data.name || '未命名项目')]);
+    headLeft.appendChild(idxSpan);
+    headLeft.appendChild(titleEl);
+    var subEl = el('div', { class: 'card-sub' }, [document.createTextNode('')]);
+    headLeft.appendChild(subEl);
+    head.appendChild(headLeft);
+
     var headRight = el('div', { class: 'head-right' });
-    var del = el('button', { type: 'button', class: 'btn-del' }, [document.createTextNode('删除此项目')]);
+    var clientTag = el('span', { class: 'client-tag' }, [document.createTextNode(data.clientShort || data.clientName || '未选客户')]);
+    var amtBadge = el('span', { class: 'amount-badge' }, [document.createTextNode(data.amount ? Number(data.amount).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' 元' : '—')]);
+    var dateBadge = el('span', { class: 'date-badge' }, [document.createTextNode((data.startDate || '?') + ' ~ ' + (data.endDate || '?'))]);
+    headRight.appendChild(clientTag);
+    headRight.appendChild(amtBadge);
+    headRight.appendChild(dateBadge);
+    var del = el('button', { type: 'button', class: 'btn-del' }, [document.createTextNode('删除')]);
     headRight.appendChild(del);
     head.appendChild(headRight);
+
+    card._head = { idx: idxSpan, title: titleEl, sub: subEl, clientTag: clientTag, amtBadge: amtBadge, dateBadge: dateBadge };
     card.appendChild(head);
 
     // 顶部：每行的客户选择组
@@ -204,12 +220,39 @@
 
     card.appendChild(body);
 
-    // 事件：实时占比
+    // 事件：实时占比 + 头部刷新
     var amtInp = card.querySelector('[data-f="amount"]');
     var budInp = card.querySelector('[data-f="budget"]');
-    var onAmt = function () { recomputeRatio(card); };
+    var nameInp = card.querySelector('[data-f="name"]');
+    var sdInp = card.querySelector('[data-f="startDate"]');
+    var edInp = card.querySelector('[data-f="endDate"]');
+    var csInp = card.querySelector('[data-f="clientShort"]');
+
+    function refreshHead() {
+      if (!card._head) return;
+      var h = card._head;
+      // 标题
+      var n = (nameInp && nameInp.value.trim()) || '';
+      h.title.textContent = n || '未命名项目';
+      h.title.className = 'card-title' + (!n ? ' placeholder' : '');
+      // 金额
+      var a = parseFloat(amtInp ? amtInp.value : '');
+      h.amtBadge.textContent = !isNaN(a) ? a.toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' 元' : '—';
+      // 日期
+      var sd = sdInp ? sdInp.value : ''; var ed = edInp ? edInp.value : '';
+      h.dateBadge.textContent = (sd || '?') + ' ~ ' + (ed || '?');
+      // 客户简称
+      var cs = csInp ? csInp.value.trim() : '';
+      h.clientTag.textContent = cs || '未选客户';
+    }
+
+    var onAmt = function () { recomputeRatio(card); refreshHead(); };
     amtInp.oninput = onAmt;
     budInp.oninput = onAmt;
+    if (nameInp) nameInp.oninput = refreshHead;
+    if (sdInp) sdInp.oninput = refreshHead;
+    if (edInp) edInp.oninput = refreshHead;
+    if (csInp) csInp.oninput = refreshHead;
     var crInp = card.querySelector('[data-f="costRate"]');
     if (crInp) crInp.oninput = function () { applyCostRateRow(card); };
 
@@ -242,6 +285,10 @@
   function addRow(data) {
     var card = makeRow(data);
     $('rows').appendChild(card);
+    // 设置头部序号
+    if (card._head && card._head.idx) {
+      card._head.idx.textContent = $('rows').querySelectorAll('.rowcard').length;
+    }
     var cr = card.querySelector('[data-f="costRate"]');
     if (cr && cr.value !== '') applyCostRateRow(card);
     recomputeRatio(card);
@@ -265,7 +312,12 @@
   }
 
   function updateCount() {
-    $('count').textContent = $('rows').querySelectorAll('.rowcard').length;
+    var cards = $('rows').querySelectorAll('.rowcard');
+    $('count').textContent = cards.length;
+    // 同步更新每个卡片的头部序号
+    cards.forEach(function (c, i) {
+      if (c._head && c._head.idx) c._head.idx.textContent = i + 1;
+    });
   }
 
   /* ---------- 从项目库导入（生成器是消费者：只读取，不回写） ---------- */

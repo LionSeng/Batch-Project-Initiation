@@ -265,6 +265,26 @@
   .sync-status.err { color:#c0392b; }
   .sync-status.ok { color:#059669; }
   .sync-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; align-items:center; }
+
+  /* 项目库：进行中 / 已归档 分段切换 */
+  .lib-seg { display:inline-flex; border:1px solid var(--border,#e2e5e9); border-radius:8px; overflow:hidden; }
+  .lib-seg-btn { padding:7px 16px; border:0; background:transparent; cursor:pointer; font-size:13px; color:var(--muted,#6b7280); font-weight:600; transition:background .15s,color .15s; }
+  .lib-seg-btn.active { background:#2f6fed; color:#fff; }
+  .lib-seg-btn:not(.active):hover { background:#f3f4f6; }
+  [data-theme="dark"] .lib-seg-btn:not(.active):hover { background:#2a2f3a; }
+  [data-theme="dark"] .lib-seg-btn.active { background:#3b82f6; }
+  .batch-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-left:auto; }
+  .btn-archive { background:#fff; border:1px solid #f0d9a8; color:#b45309; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px; font-weight:600; }
+  .btn-archive:hover { background:#fef3c7; }
+  [data-theme="dark"] .btn-archive { background:#2a2414; border-color:#5a4a20; color:#fbbf24; }
+  [data-theme="dark"] .btn-archive:hover { background:#3a3018; }
+  .btn-restore { background:#fff; border:1px solid #bfe6cb; color:#0a7d3e; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px; font-weight:600; }
+  .btn-restore:hover { background:#eaf7ee; }
+  [data-theme="dark"] .btn-restore { background:#10261a; border-color:#1c4a32; color:#5fd39a; }
+  [data-theme="dark"] .btn-restore:hover { background:#163521; }
+  .archived-at { font-size:12px; color:#9ca3af; white-space:nowrap; }
+  [data-theme="dark"] .archived-at { color:#6b7280; }
+  .lib-empty-archive { padding:40px 20px; text-align:center; color:var(--muted,#9ca3af); font-size:14px; }
 </style>
 </head>
 <body>
@@ -272,7 +292,7 @@
   <nav class="topnav">
     <span class="nav-cur">📊 立项总览（看板 + 项目库）</span>
     <a href="index.html">② 批量立项文件生成器</a>
-    <span class="nav-disabled">③ 历史项目库（待建）</span>
+    <a href="#lib" id="navArchive">③ 历史项目库</a>
     <span class="nav-tip">看板总览 + 项目库维护，共用同一份数据</span>
   </nav>
 
@@ -435,21 +455,47 @@
     </div>
 
     <div class="lib-card">
-      <h2>项目列表</h2>
-      <div class="lib-toolbar">
-        <label style="font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="selAll"> 全选</label>
-        <button class="act b-ghost" id="btnExport" type="button">导出 JSON</button>
-        <button class="act b-ghost" id="btnImport" type="button">导入 JSON</button>
-        <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
-        <button class="act b-ghost" id="btnUpload" type="button">📎 上传文件识别</button>
-        <button class="act b-cloud" id="btnSync" type="button">☁ 云同步</button>
-        <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
-        <a class="act b-go" href="index.html">打开批量立项生成器 →</a>
-        <span class="lib-meta" id="libMeta">共 0 个项目</span>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <h2 style="margin:0;">项目列表</h2>
+        <div class="lib-seg">
+          <button class="lib-seg-btn active" id="segActive" type="button">📋 进行中 <span id="cntActive">0</span></button>
+          <button class="lib-seg-btn" id="segArchive" type="button">🗄 已归档 <span id="cntArchive">0</span></button>
+        </div>
       </div>
-      <div class="drop-zone" id="dropZone">把 PDF / EML / Excel / CSV / TXT 文件拖到这里，或点上方「📎 上传文件识别」</div>
-      <div style="overflow-x:auto;">
-        <table class="lib-table" id="libTable"></table>
+
+      <!-- 进行中视图 -->
+      <div id="libActiveView">
+        <div class="lib-toolbar">
+          <label style="font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="selAll"> 全选</label>
+          <button class="btn-archive" id="btnArchive" type="button">📦 归档选中</button>
+          <button class="act b-ghost" id="btnDelSel" type="button">🗑 删除选中</button>
+          <button class="act b-ghost" id="btnExport" type="button">导出 JSON</button>
+          <button class="act b-ghost" id="btnImport" type="button">导入 JSON</button>
+          <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
+          <button class="act b-ghost" id="btnUpload" type="button">📎 上传文件识别</button>
+          <button class="act b-cloud" id="btnSync" type="button">☁ 云同步</button>
+          <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
+          <a class="act b-go" href="index.html">打开批量立项生成器 →</a>
+          <span class="lib-meta" id="libMeta">共 0 个项目</span>
+        </div>
+        <div class="drop-zone" id="dropZone">把 PDF / EML / Excel / CSV / TXT 文件拖到这里，或点上方「📎 上传文件识别」</div>
+        <div style="overflow-x:auto;">
+          <table class="lib-table" id="libTable"></table>
+        </div>
+      </div>
+
+      <!-- 已归档视图 -->
+      <div id="libArchiveView" style="display:none;">
+        <div class="lib-toolbar">
+          <label style="font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="selAllArch"> 全选</label>
+          <button class="btn-restore" id="btnRestore" type="button">↩ 恢复选中</button>
+          <button class="act b-ghost" id="btnDelArch" type="button">🗑 删除选中</button>
+          <span class="lib-meta" id="archMeta">共 0 个已归档项目</span>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin:6px 0 12px;">归档后的项目不再计入看板指标。可随时恢复回「进行中」，或永久删除。</p>
+        <div style="overflow-x:auto;">
+          <table class="lib-table" id="archTable"></table>
+        </div>
       </div>
     </div>
   </div>
@@ -654,6 +700,117 @@ var CUSTOMERS = [
   function load(){ try{ var s=localStorage.getItem(LIB_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
   function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); if(loadCloudCfg().auto) scheduleAutoBackup(); return true; }catch(e){ return false; } }
   function uid(){ return 'p_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
+
+  /* ===== 归档库（历史项目库） ===== */
+  var ARCHIVE_KEY='bpi_archive_v1';
+  var libView='active';  // 'active' | 'archive'
+  function loadArchive(){ try{ var s=localStorage.getItem(ARCHIVE_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
+  function saveArchive(arr){ try{ localStorage.setItem(ARCHIVE_KEY,JSON.stringify(arr)); if(loadCloudCfg().auto) scheduleAutoBackup(); return true; }catch(e){ return false; } }
+  function updateLibCounts(){
+    var n=load().length, m=loadArchive().length;
+    if($('cntActive')) $('cntActive').textContent=n;
+    if($('cntArchive')) $('cntArchive').textContent=m;
+  }
+  function switchLib(v){
+    libView=v;
+    var isA=(v==='archive');
+    if($('libActiveView')) $('libActiveView').style.display=isA?'none':'';
+    if($('libArchiveView')) $('libArchiveView').style.display=isA?'':'none';
+    if($('segActive')) $('segActive').classList.toggle('active',!isA);
+    if($('segArchive')) $('segArchive').classList.toggle('active',isA);
+    if(isA) renderArchiveList(); else renderLibList();
+  }
+  function renderArchiveList(){
+    var arr=loadArchive();
+    if($('archMeta')) $('archMeta').textContent='共 '+arr.length+' 个已归档项目';
+    var tbl=$('archTable'); if(!tbl) return;
+    if(!arr.length){
+      tbl.innerHTML='<tbody><tr><td class="lib-empty-archive">还没有已归档项目。在「进行中」勾选项目后点「📦 归档选中」即可。</td></tr></tbody>';
+      return;
+    }
+    var head='<thead><tr><th style="width:34px;"></th><th>项目名称</th><th>客户</th><th>金额</th><th>起止日期</th><th>项目编号</th><th>归档时间</th><th style="width:130px;">操作</th></tr></thead>';
+    var body='<tbody>';
+    arr.forEach(function(x){
+      var amt=(x.amount && !isNaN(parseFloat(x.amount))) ? Number(x.amount).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+      var at=x.archivedAt ? new Date(x.archivedAt).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+      body+='<tr>';
+      body+='<td><input type="checkbox" class="arch-chk" data-id="'+escAttr(x.id)+'"></td>';
+      body+='<td>'+esc(x.name||'—')+'</td>';
+      body+='<td>'+esc(x.clientShort||x.clientName||'—')+'</td>';
+      body+='<td class="money">'+amt+'</td>';
+      body+='<td>'+esc(x.startDate||'?')+' ~ '+esc(x.endDate||'?')+'</td>';
+      body+='<td>'+esc(x.projCode||'—')+'</td>';
+      body+='<td class="archived-at">'+at+'</td>';
+      body+='<td><button type="button" class="btn-restore btn-restore-row" data-id="'+escAttr(x.id)+'">恢复</button><button type="button" class="btn-del" data-id="'+escAttr(x.id)+'">删除</button></td>';
+      body+='</tr>';
+    });
+    body+='</tbody>';
+    tbl.innerHTML=head+body;
+    tbl.querySelectorAll('.btn-restore-row').forEach(function(b){ b.onclick=function(){ restoreOne(b.getAttribute('data-id')); }; });
+    tbl.querySelectorAll('.btn-del').forEach(function(b){ b.onclick=function(){ delArchiveOne(b.getAttribute('data-id')); }; });
+  }
+  function getSelIds(container,sel){
+    var ids=[];
+    (container?container:document).querySelectorAll(sel).forEach(function(cb){ if(cb.checked) ids.push(cb.getAttribute('data-id')); });
+    return ids;
+  }
+  function archiveSel(){
+    var ids=getSelIds($('libActiveView'),'.row-chk');
+    if(!ids.length){ setStatus('请先勾选要归档的项目。', true); return; }
+    var lib=load(), arch=loadArchive(), keep=[], moved=0;
+    var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
+    lib.forEach(function(x){ if(idSet[x.id]){ x.archivedAt=Date.now(); arch.push(x); moved++; } else keep.push(x); });
+    save(keep); saveArchive(arch);
+    renderLibList(); renderArchiveList(); updateLibCounts(); render();
+    if($('selAll')) $('selAll').checked=false;
+    setStatus('已归档 '+moved+' 个项目到历史项目库。', false);
+  }
+  function restoreSel(){
+    var ids=getSelIds($('libArchiveView'),'.arch-chk');
+    if(!ids.length){ setStatus('请先勾选要恢复的项目。', true); return; }
+    var arch=loadArchive(), lib=load(), keep=[], moved=0;
+    var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
+    arch.forEach(function(x){ if(idSet[x.id]){ delete x.archivedAt; lib.push(x); moved++; } else keep.push(x); });
+    save(lib); saveArchive(keep);
+    renderLibList(); renderArchiveList(); updateLibCounts(); render();
+    if($('selAllArch')) $('selAllArch').checked=false;
+    setStatus('已恢复 '+moved+' 个项目到进行中。', false);
+  }
+  function restoreOne(id){
+    var arch=loadArchive(), lib=load();
+    var idx=-1; for(var i=0;i<arch.length;i++){ if(arch[i].id===id){ idx=i; break; } }
+    if(idx<0) return;
+    var p=arch[idx]; delete p.archivedAt; lib.push(p);
+    arch.splice(idx,1);
+    save(lib); saveArchive(arch);
+    renderLibList(); renderArchiveList(); updateLibCounts(); render();
+    setStatus('已恢复 1 个项目到进行中。', false);
+  }
+  function delArchiveOne(id){
+    var arch=loadArchive().filter(function(x){ return x.id!==id; });
+    saveArchive(arch); renderArchiveList(); updateLibCounts();
+    setStatus('已从历史项目库永久删除 1 个项目。', false);
+  }
+  function delSel(){
+    var ids=getSelIds($('libActiveView'),'.row-chk');
+    if(!ids.length){ setStatus('请先勾选要删除的项目。', true); return; }
+    if(!confirm('确认删除选中的 '+ids.length+' 个项目？此操作不可撤销。')) return;
+    var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
+    var arr=load().filter(function(x){ return !idSet[x.id]; });
+    save(arr); renderLibList(); updateLibCounts(); render();
+    if($('selAll')) $('selAll').checked=false;
+    setStatus('已删除 '+ids.length+' 个项目。', false);
+  }
+  function delArchiveSel(){
+    var ids=getSelIds($('libArchiveView'),'.arch-chk');
+    if(!ids.length){ setStatus('请先勾选要删除的已归档项目。', true); return; }
+    if(!confirm('确认永久删除选中的 '+ids.length+' 个已归档项目？此操作不可撤销。')) return;
+    var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
+    var arr=loadArchive().filter(function(x){ return !idSet[x.id]; });
+    saveArchive(arr); renderArchiveList(); updateLibCounts();
+    if($('selAllArch')) $('selAllArch').checked=false;
+    setStatus('已永久删除 '+ids.length+' 个已归档项目。', false);
+  }
 
   function mergeSeed(){
     var arr=load(); var existed={}; arr.forEach(function(x){ if(x&&x.id) existed[x.id]=true; });
@@ -956,6 +1113,7 @@ var CUSTOMERS = [
     tbl.innerHTML=head+body;
     tbl.querySelectorAll('.btn-edit').forEach(function(b){ b.onclick=function(){ editProj(b.getAttribute('data-id')); }; });
     tbl.querySelectorAll('.btn-del').forEach(function(b){ b.onclick=function(){ deleteProj(b.getAttribute('data-id')); }; });
+    updateLibCounts();
   }
   function pad(n){ return n<10?'0'+n:''+n; }
   function stamp(){
@@ -1017,6 +1175,13 @@ var CUSTOMERS = [
   }
   function ghRepoPath(){ var cfg=loadCloudCfg(); return '/repos/'+cfg.repo+'/contents/'+(cfg.path||'data/project-library.json'); }
   function ghBranch(){ var cfg=loadCloudCfg(); return cfg.branch||'main'; }
+  function ghArchivePath(){
+    var cfg=loadCloudCfg();
+    var p=cfg.path||'data/project-library.json';
+    var dir=p.lastIndexOf('/')>=0 ? p.slice(0, p.lastIndexOf('/')+1) : '';
+    var ext=p.lastIndexOf('.')>=0 ? p.slice(p.lastIndexOf('.')) : '.json';
+    return '/repos/'+cfg.repo+'/contents/'+dir+'project-archive'+ext;
+  }
   function backupToGitHub(){
     var cfg=loadCloudCfg();
     if(!cfg.repo){ setSyncStatus('请先填写「仓库 owner/repo」并保存配置', true); return; }
@@ -1034,14 +1199,31 @@ var CUSTOMERS = [
       if(sha) body.sha=sha;
       return ghApi(apiPath, { method:'PUT', body:body });
     }).then(function(r){ if(!r.ok) return r.json().then(function(d){ throw new Error(d.message||('写入失败 HTTP '+r.status)); }); return r; })
-      .then(function(){ setSyncStatus('已备份 '+arr.length+' 个项目到 GitHub', false); })
+      .then(function(){
+        /* 继续备份归档库到 project-archive.json */
+        var arch=loadArchive();
+        var archContent=JSON.stringify({ version:1, exportedAt:new Date().toISOString(), projects:arch }, null, 2);
+        var archB64=utf8ToBase64(archContent);
+        var archPath=ghArchivePath();
+        return ghApi(archPath+'?ref='+encodeURIComponent(branch)).then(function(r){
+          if(r.status===404) return null;
+          if(r.ok) return r.json().then(function(d){ return d.sha; });
+          return r.json().then(function(d){ throw new Error(d.message||('获取归档文件失败 HTTP '+r.status)); });
+        }).then(function(sha){
+          var body2={ message:'chore(sync): 备份归档库 '+arch.length+' 项 '+new Date().toISOString(), content:archB64, branch:branch };
+          if(sha) body2.sha=sha;
+          return ghApi(archPath, { method:'PUT', body:body2 });
+        }).then(function(r){ if(!r.ok) return r.json().then(function(d){ throw new Error(d.message||('写入归档失败 HTTP '+r.status)); }); return r; });
+      })
+      .then(function(){ setSyncStatus('已备份 '+arr.length+' 个项目 + '+loadArchive().length+' 个归档到 GitHub', false); })
       .catch(function(e){ setSyncStatus('备份失败：'+e.message, true); });
   }
   function restoreFromGitHub(){
     var cfg=loadCloudCfg();
     if(!cfg.repo){ setSyncStatus('请先填写「仓库 owner/repo」并保存配置', true); return; }
     setSyncStatus('正在从 GitHub 拉取…', false);
-    var apiPath=ghRepoPath()+'?ref='+encodeURIComponent(ghBranch());
+    var branch=ghBranch();
+    var apiPath=ghRepoPath()+'?ref='+encodeURIComponent(branch);
     ghApi(apiPath).then(function(r){
       if(r.status===404) throw new Error('GitHub 上还没有备份文件，请先「备份到 GitHub」一次');
       if(!r.ok) return r.json().then(function(d){ throw new Error(d.message||('拉取失败 HTTP '+r.status)); });
@@ -1053,8 +1235,27 @@ var CUSTOMERS = [
       var arr=load(); var existed={}; arr.forEach(function(x){ existed[x.id]=true; });
       var added=0, merged=0;
       incoming.forEach(function(it){ if(!it||typeof it!=='object') return; if(!it.id) it.id=uid(); if(existed[it.id]) merged++; else { arr.push(it); existed[it.id]=true; added++; } });
-      save(arr); renderLibList(); render();
-      setSyncStatus('已从 GitHub 恢复：新增 '+added+' 个，跳过重复 '+merged+' 个', false);
+      save(arr);
+      /* 继续恢复归档库（不存在则跳过） */
+      var archPath=ghArchivePath()+'?ref='+encodeURIComponent(branch);
+      return ghApi(archPath).then(function(r){
+        if(r.status===404) return null;
+        if(!r.ok) return r.json().then(function(d2){ throw new Error(d2.message||('拉取归档失败 HTTP '+r.status)); });
+        return r.json();
+      }).then(function(d2){
+        var archAdded=0, archMerged=0;
+        if(d2){
+          var ap=JSON.parse(base64ToUtf8(d2.content));
+          var aIncoming=Array.isArray(ap)?ap:ap.projects;
+          if(Array.isArray(aIncoming)){
+            var arch=loadArchive(); var aExisted={}; arch.forEach(function(x){ aExisted[x.id]=true; });
+            aIncoming.forEach(function(it){ if(!it||typeof it!=='object') return; if(!it.id) it.id=uid(); if(aExisted[it.id]) archMerged++; else { arch.push(it); aExisted[it.id]=true; archAdded++; } });
+            saveArchive(arch);
+          }
+        }
+        renderLibList(); renderArchiveList(); updateLibCounts(); render();
+        setSyncStatus('已恢复：进行中 +'+added+' (跳过 '+merged+')，归档 +'+archAdded+' (跳过 '+archMerged+')', false);
+      });
     }).catch(function(e){ setSyncStatus('恢复失败：'+e.message, true); });
   }
   var _autoTimer=null;
@@ -1357,7 +1558,7 @@ var CUSTOMERS = [
     $('viewLib').style.display=isK?'none':'';
     $('tabKanban').classList.toggle('active',isK);
     $('tabLib').classList.toggle('active',!isK);
-    if(isK) render(); else { renderLibList(); }
+    if(isK) render(); else { renderLibList(); updateLibCounts(); if(libView==='archive') renderArchiveList(); }
   }
   function syncBtns(){
     $('gSource').classList.toggle('active',groupMode==='source');
@@ -1512,6 +1713,16 @@ var CUSTOMERS = [
     if(typeof pdfjsLib!=='undefined' && pdfjsLib.GlobalWorkerOptions) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
     $('selAll').onchange=function(){ var v=this.checked; $('libTable').querySelectorAll('.row-chk').forEach(function(cb){ cb.checked=v; }); };
 
+    // 归档库（历史项目库）：分段切换 + 批量操作 + 全选联动
+    $('segActive').onclick=function(){ switchLib('active'); };
+    $('segArchive').onclick=function(){ switchLib('archive'); };
+    $('btnArchive').onclick=archiveSel;
+    $('btnRestore').onclick=restoreSel;
+    $('btnDelSel').onclick=delSel;
+    $('btnDelArch').onclick=delArchiveSel;
+    $('selAllArch').onchange=function(){ var v=this.checked; $('archTable').querySelectorAll('.arch-chk').forEach(function(cb){ cb.checked=v; }); };
+    $('navArchive').onclick=function(e){ e.preventDefault(); showTab('lib'); switchLib('archive'); };
+
     // 云端同步（GitHub）绑定
     $('btnSync').onclick=openSync;
     $('syncSave').onclick=function(){
@@ -1539,9 +1750,11 @@ var CUSTOMERS = [
     window.addEventListener('focus', function(){ if($('viewKanban').style.display!=='none') render(); else renderLibList(); });
     document.addEventListener('visibilitychange', function(){ if(!document.hidden){ if($('viewKanban').style.display!=='none') render(); else renderLibList(); } });
 
-    // 默认：看板（或按 hash 打开库）
-    var start=(location.hash==='#lib') ? 'lib' : 'kanban';
+    // 默认：看板（或按 hash 打开库 / 历史项目库）
+    var start=(location.hash==='#lib'||location.hash==='#archive') ? 'lib' : 'kanban';
     showTab(start);
+    if(location.hash==='#archive') switchLib('archive');
+    updateLibCounts();
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);

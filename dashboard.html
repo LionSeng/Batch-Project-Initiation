@@ -245,6 +245,26 @@
   .recog-raw pre{ max-height:200px; overflow:auto; white-space:pre-wrap; background:#f3f4f6; border-radius:8px; padding:10px; font-size:12px; }
   [data-theme="dark"] .recog-raw pre{ background:#161a22; }
   .recog-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:16px; }
+  /* ===== 云同步（GitHub 仓库） ===== */
+  .b-cloud { background:#24292f; color:#fff; border:1px solid #24292f; }
+  .b-cloud:hover { background:#32383f; }
+  .sync-mask { position:fixed; inset:0; background:rgba(15,23,42,.5); display:none; align-items:center; justify-content:center; z-index:80; padding:20px; }
+  .sync-dialog { background:#fff; width:min(540px,96vw); border-radius:14px; padding:22px 24px; box-shadow:0 20px 60px rgba(0,0,0,.25); max-height:92vh; overflow:auto; }
+  .sync-h { font-weight:700; font-size:17px; color:#111827; display:flex; align-items:center; gap:8px; }
+  .sync-note { font-size:12.5px; color:#6b7280; line-height:1.65; background:#f8fafc; border:1px solid #e6e8eb; border-radius:8px; padding:10px 12px; margin:10px 0; }
+  .sync-note b { color:#b45309; }
+  .sync-note code { background:#eef2f7; padding:1px 5px; border-radius:4px; font-size:12px; }
+  .sync-field { margin:10px 0; }
+  .sync-field label { display:block; font-size:13px; color:#374151; margin-bottom:4px; font-weight:600; }
+  .sync-field input[type=text], .sync-field input[type=password] { width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:13px; }
+  .sync-field input:focus { outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.15); }
+  .sync-row { display:flex; gap:10px; }
+  .sync-row .sync-field { flex:1; }
+  .sync-auto { display:flex; align-items:center; gap:6px; font-size:13px; color:#374151; margin:8px 0; }
+  .sync-status { font-size:13px; min-height:18px; margin:8px 0; }
+  .sync-status.err { color:#c0392b; }
+  .sync-status.ok { color:#059669; }
+  .sync-actions { display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; align-items:center; }
 </style>
 </head>
 <body>
@@ -422,6 +442,7 @@
         <button class="act b-ghost" id="btnImport" type="button">导入 JSON</button>
         <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
         <button class="act b-ghost" id="btnUpload" type="button">📎 上传文件识别</button>
+        <button class="act b-cloud" id="btnSync" type="button">☁ 云同步</button>
         <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
         <a class="act b-go" href="index.html">打开批量立项生成器 →</a>
         <span class="lib-meta" id="libMeta">共 0 个项目</span>
@@ -433,7 +454,7 @@
     </div>
   </div>
 
-  <footer>本页面完全离线，数据存于本机浏览器，与「批量立项生成器」共用同一份数据。金额按您确认的「文件原值 = 最终申报人民币金额」计。</footer>
+  <footer>数据默认存于本机浏览器，与「批量立项生成器」共用同一份数据；点「☁ 云同步」可将项目库备份到 GitHub 仓库，实现多设备同步。金额按您确认的「文件原值 = 最终申报人民币金额」计。</footer>
 </div>
 
 <!-- 文件识别依赖：SheetJS(Excel/CSV) + pdf.js(PDF 文字提取)，离线可用 -->
@@ -450,6 +471,31 @@
     <div class="recog-actions">
       <button class="act b-ghost" id="recogCancel" type="button">取消</button>
       <button class="act b-primary" id="recogAdd" type="button">确认添加选中项</button>
+    </div>
+  </div>
+</div>
+
+<!-- 云端同步（GitHub 仓库 Contents API，零后端、零部署） -->
+<div id="syncMask" class="sync-mask" style="display:none;">
+  <div class="sync-dialog">
+    <div class="sync-h">☁ 云端同步（GitHub 仓库）</div>
+    <div class="sync-note">
+      把项目库备份到你的 GitHub 仓库，实现<b>多设备同步</b>。数据以 JSON 文件存于仓库指定路径（默认 <code>data/project-library.json</code>），通过 GitHub 官方 API 直接读写，<b>不需要任何服务器</b>。<br>
+      <b>安全提示：</b>Token 仅保存在本机浏览器 localStorage，不会写入代码仓库。建议使用 <b>fine-grained token</b>，仅授权该仓库的 <b>Contents 读写</b> 权限，不要勾选其他范围。
+    </div>
+    <div class="sync-field"><label>GitHub Token（Personal Access Token）</label><input type="password" id="syncToken" placeholder="ghp_… 或 github_pat_…" autocomplete="off"></div>
+    <div class="sync-field"><label>仓库（owner/repo）</label><input type="text" id="syncRepo" placeholder="LionSeng/my-repo"></div>
+    <div class="sync-row">
+      <div class="sync-field"><label>分支</label><input type="text" id="syncBranch" placeholder="main"></div>
+      <div class="sync-field"><label>数据文件路径</label><input type="text" id="syncPath" placeholder="data/project-library.json"></div>
+    </div>
+    <label class="sync-auto"><input type="checkbox" id="syncAuto"> 立项保存后自动备份到 GitHub（默认关闭，避免频繁请求与 Token 暴露）</label>
+    <div class="sync-status" id="syncStatus"></div>
+    <div class="sync-actions">
+      <button class="act b-ghost" id="syncSave" type="button">保存配置</button>
+      <button class="act b-primary" id="syncBackup" type="button">⬆ 备份到 GitHub</button>
+      <button class="act b-go" id="syncRestore" type="button">⬇ 从 GitHub 恢复</button>
+      <button class="act b-ghost" id="syncClose" type="button" style="margin-left:auto;">关闭</button>
     </div>
   </div>
 </div>
@@ -606,7 +652,7 @@ var CUSTOMERS = [
   function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
   function escAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function load(){ try{ var s=localStorage.getItem(LIB_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
-  function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); return true; }catch(e){ return false; } }
+  function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); if(loadCloudCfg().auto) scheduleAutoBackup(); return true; }catch(e){ return false; } }
   function uid(){ return 'p_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
 
   function mergeSeed(){
@@ -946,6 +992,81 @@ var CUSTOMERS = [
       }catch(e){ setStatus('导入失败：'+(e&&e.message?e.message:e), true); }
     };
     reader.readAsText(file);
+  }
+
+  /* ===== 云端同步（GitHub 仓库 Contents API，零后端、零部署） ===== */
+  var CLOUD_CFG_KEY='bpi_cloud_cfg';
+  function loadCloudCfg(){ try{ return JSON.parse(localStorage.getItem(CLOUD_CFG_KEY))||{}; }catch(e){ return {}; } }
+  function saveCloudCfg(c){ try{ localStorage.setItem(CLOUD_CFG_KEY, JSON.stringify(c)); }catch(e){} }
+  function setSyncStatus(msg, isErr){
+    var el=$('syncStatus'); if(!el) return;
+    el.textContent=msg||'';
+    el.className='sync-status'+(isErr?' err':'')+(msg&&!isErr?' ok':'');
+  }
+  function utf8ToBase64(str){ var bytes=new TextEncoder().encode(str); var bin=''; for(var i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]); return btoa(bin); }
+  function base64ToUtf8(b64){ var bin=atob(b64.replace(/\s/g,'')); var bytes=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); return new TextDecoder().decode(bytes); }
+  function ghApi(path, opts){
+    var cfg=loadCloudCfg();
+    if(!cfg.token) throw new Error('请先在「保存配置」中填写 GitHub Token');
+    opts=opts||{};
+    return fetch('https://api.github.com'+path, {
+      method: opts.method||'GET',
+      headers: { 'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+      body: opts.body?JSON.stringify(opts.body):undefined
+    });
+  }
+  function ghRepoPath(){ var cfg=loadCloudCfg(); return '/repos/'+cfg.repo+'/contents/'+(cfg.path||'data/project-library.json'); }
+  function ghBranch(){ var cfg=loadCloudCfg(); return cfg.branch||'main'; }
+  function backupToGitHub(){
+    var cfg=loadCloudCfg();
+    if(!cfg.repo){ setSyncStatus('请先填写「仓库 owner/repo」并保存配置', true); return; }
+    setSyncStatus('正在备份到 GitHub…', false);
+    var arr=load();
+    var content=JSON.stringify({ version:1, exportedAt:new Date().toISOString(), projects:arr }, null, 2);
+    var b64=utf8ToBase64(content);
+    var apiPath=ghRepoPath(); var branch=ghBranch();
+    ghApi(apiPath+'?ref='+encodeURIComponent(branch)).then(function(r){
+      if(r.status===404) return null;
+      if(r.ok) return r.json().then(function(d){ return d.sha; });
+      return r.json().then(function(d){ throw new Error(d.message||('获取文件失败 HTTP '+r.status)); });
+    }).then(function(sha){
+      var body={ message:'chore(sync): 备份项目库 '+arr.length+' 项 '+new Date().toISOString(), content:b64, branch:branch };
+      if(sha) body.sha=sha;
+      return ghApi(apiPath, { method:'PUT', body:body });
+    }).then(function(r){ if(!r.ok) return r.json().then(function(d){ throw new Error(d.message||('写入失败 HTTP '+r.status)); }); return r; })
+      .then(function(){ setSyncStatus('已备份 '+arr.length+' 个项目到 GitHub', false); })
+      .catch(function(e){ setSyncStatus('备份失败：'+e.message, true); });
+  }
+  function restoreFromGitHub(){
+    var cfg=loadCloudCfg();
+    if(!cfg.repo){ setSyncStatus('请先填写「仓库 owner/repo」并保存配置', true); return; }
+    setSyncStatus('正在从 GitHub 拉取…', false);
+    var apiPath=ghRepoPath()+'?ref='+encodeURIComponent(ghBranch());
+    ghApi(apiPath).then(function(r){
+      if(r.status===404) throw new Error('GitHub 上还没有备份文件，请先「备份到 GitHub」一次');
+      if(!r.ok) return r.json().then(function(d){ throw new Error(d.message||('拉取失败 HTTP '+r.status)); });
+      return r.json();
+    }).then(function(d){
+      var parsed=JSON.parse(base64ToUtf8(d.content));
+      var incoming=Array.isArray(parsed)?parsed:parsed.projects;
+      if(!Array.isArray(incoming)) throw new Error('备份文件格式不正确');
+      var arr=load(); var existed={}; arr.forEach(function(x){ existed[x.id]=true; });
+      var added=0, merged=0;
+      incoming.forEach(function(it){ if(!it||typeof it!=='object') return; if(!it.id) it.id=uid(); if(existed[it.id]) merged++; else { arr.push(it); existed[it.id]=true; added++; } });
+      save(arr); renderLibList(); render();
+      setSyncStatus('已从 GitHub 恢复：新增 '+added+' 个，跳过重复 '+merged+' 个', false);
+    }).catch(function(e){ setSyncStatus('恢复失败：'+e.message, true); });
+  }
+  var _autoTimer=null;
+  function scheduleAutoBackup(){ if(_autoTimer) clearTimeout(_autoTimer); _autoTimer=setTimeout(function(){ var cfg=loadCloudCfg(); if(cfg.auto&&cfg.token&&cfg.repo) backupToGitHub(); }, 1500); }
+  function openSync(){
+    var cfg=loadCloudCfg();
+    $('syncToken').value=cfg.token||'';
+    $('syncRepo').value=cfg.repo||'';
+    $('syncBranch').value=cfg.branch||'main';
+    $('syncPath').value=cfg.path||'data/project-library.json';
+    $('syncAuto').checked=!!cfg.auto;
+    $('syncMask').style.display='flex'; setSyncStatus('', false);
   }
 
   /* ===== 上传文件识别（PDF / EML / Excel / CSV / TXT） ===== */
@@ -1390,6 +1511,22 @@ var CUSTOMERS = [
     _dz.onclick=function(){ $('fileUpload').click(); };
     if(typeof pdfjsLib!=='undefined' && pdfjsLib.GlobalWorkerOptions) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
     $('selAll').onchange=function(){ var v=this.checked; $('libTable').querySelectorAll('.row-chk').forEach(function(cb){ cb.checked=v; }); };
+
+    // 云端同步（GitHub）绑定
+    $('btnSync').onclick=openSync;
+    $('syncSave').onclick=function(){
+      var cfg=loadCloudCfg();
+      cfg.token=$('syncToken').value.trim();
+      cfg.repo=$('syncRepo').value.trim();
+      cfg.branch=$('syncBranch').value.trim()||'main';
+      cfg.path=$('syncPath').value.trim()||'data/project-library.json';
+      cfg.auto=$('syncAuto').checked;
+      saveCloudCfg(cfg); setSyncStatus('配置已保存', false);
+    };
+    $('syncBackup').onclick=backupToGitHub;
+    $('syncRestore').onclick=restoreFromGitHub;
+    $('syncClose').onclick=function(){ $('syncMask').style.display='none'; };
+    $('syncMask').addEventListener('click', function(e){ if(e.target===$('syncMask')) $('syncMask').style.display='none'; });
 
     // 看板卡片/列表「编辑」→ 切到库 tab 并打开编辑；「解散」→ 还原合并项
     document.addEventListener('click', function(e){

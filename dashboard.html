@@ -27,11 +27,10 @@
 
   .topnav { background:var(--card); border-radius:10px; padding:10px 16px; margin-top:14px; box-shadow:var(--shadow);
             display:flex; gap:10px; flex-wrap:wrap; align-items:center; transition:background-color .25s; }
-  .topnav a, .topnav .nav-cur, .topnav .nav-disabled { text-decoration:none; font-size:14px; padding:7px 14px; border-radius:7px; color:var(--text); }
-  .topnav a { background:var(--tag); }
-  .topnav a:hover { background:var(--accent-soft); }
-  .topnav .nav-cur { background:var(--accent); color:#fff; font-weight:600; }
-  .topnav .nav-disabled { background:var(--tag); color:var(--muted); cursor:not-allowed; }
+  .topnav a, .topnav .nav-btn { text-decoration:none; font-size:14px; padding:7px 14px; border-radius:7px; color:var(--text); cursor:pointer; border:none; background:var(--tag); font-family:inherit; }
+  .topnav a:hover, .topnav .nav-btn:hover { background:var(--accent-soft); }
+  .topnav .nav-active { background:var(--accent); color:#fff; font-weight:600; }
+  .topnav .nav-active:hover { background:var(--accent); }
   .topnav .nav-tip { margin-left:auto; color:var(--muted); font-size:12px; }
 
   .theme-btn { border:1px solid var(--border); background:var(--card); color:var(--text);
@@ -290,10 +289,10 @@
 <body>
 <div class="wrap">
   <nav class="topnav">
-    <span class="nav-cur">📊 立项总览（看板 + 项目库）</span>
+    <a href="#" id="navDash" class="nav-active">📊 立项总览</a>
     <a href="index.html">② 批量立项文件生成器</a>
-    <a href="#lib" id="navArchive">③ 历史项目库</a>
-    <span class="nav-tip">看板总览 + 项目库维护，共用同一份数据</span>
+    <a href="#" id="navArchive">③ 历史项目库</a>
+    <span class="nav-tip">看板总览 + 项目库维护 + 历史归档，共用同一份数据</span>
   </nav>
 
   <header>
@@ -1552,6 +1551,28 @@ var CUSTOMERS = [
   }
 
   /* ===== Tab 切换 ===== */
+  var currentTopNav='dash'; // 'dash' | 'archive'
+  function switchTopNav(which){
+    currentTopNav=which;
+    $('navDash').classList.toggle('nav-active', which==='dash');
+    $('navArchive').classList.toggle('nav-active', which==='archive');
+    // 根据导航切换内容区
+    if(which==='dash'){
+      showTab('kanban');
+      $('header').style.display='';
+      $('metrics').style.display='';
+      $('srcChips').style.display='';
+      $('tabs').style.display='';
+    } else {
+      showTab('lib');
+      switchLib('archive');
+      // 归档视图隐藏看板专属区域，避免混淆
+      $('header').style.display='none';
+      $('metrics').style.display='none';
+      $('srcChips').style.display='none';
+      $('tabs').style.display='none';
+    }
+  }
   function showTab(t){
     var isK=(t==='kanban');
     $('viewKanban').style.display=isK?'':'none';
@@ -1651,7 +1672,7 @@ var CUSTOMERS = [
       var added=mergeSeed(); render();
       setStatus(added?('已合并整理数据：新增 '+added+' 项（相同 ID 已跳过）'):'整理数据已全部存在，无新增。', false);
     };
-    $('toLib').onclick=function(e){ e.preventDefault(); showTab('lib'); };
+    $('toLib').onclick=function(e){ e.preventDefault(); if(currentTopNav==='archive') switchTopNav('dash'); showTab('lib'); };
 
     // 多选 → 批量立项
     $('selView').onchange=function(){
@@ -1685,8 +1706,8 @@ var CUSTOMERS = [
     });
 
     // tab 按钮
-    $('tabKanban').onclick=function(){ showTab('kanban'); };
-    $('tabLib').onclick=function(){ showTab('lib'); };
+    $('tabKanban').onclick=function(){ if(currentTopNav==='archive') switchTopNav('dash'); showTab('kanban'); };
+    $('tabLib').onclick=function(){ if(currentTopNav==='archive') switchTopNav('dash'); showTab('lib'); };
 
     // 项目库 CRUD 绑定
     buildPicker('');
@@ -1721,7 +1742,8 @@ var CUSTOMERS = [
     $('btnDelSel').onclick=delSel;
     $('btnDelArch').onclick=delArchiveSel;
     $('selAllArch').onchange=function(){ var v=this.checked; $('archTable').querySelectorAll('.arch-chk').forEach(function(cb){ cb.checked=v; }); };
-    $('navArchive').onclick=function(e){ e.preventDefault(); showTab('lib'); switchLib('archive'); };
+    $('navArchive').onclick=function(e){ e.preventDefault(); switchTopNav('archive'); };
+    $('navDash').onclick=function(e){ e.preventDefault(); switchTopNav('dash'); };
 
     // 云端同步（GitHub）绑定
     $('btnSync').onclick=openSync;
@@ -1751,9 +1773,8 @@ var CUSTOMERS = [
     document.addEventListener('visibilitychange', function(){ if(!document.hidden){ if($('viewKanban').style.display!=='none') render(); else renderLibList(); } });
 
     // 默认：看板（或按 hash 打开库 / 历史项目库）
-    var start=(location.hash==='#lib'||location.hash==='#archive') ? 'lib' : 'kanban';
-    showTab(start);
-    if(location.hash==='#archive') switchLib('archive');
+    if(location.hash==='#archive'){ switchTopNav('archive'); }
+    else { showTab('kanban'); }
     updateLibCounts();
   }
 

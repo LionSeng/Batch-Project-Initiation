@@ -225,6 +225,26 @@
   footer { color:var(--muted); font-size:12px; margin-top:18px; text-align:center; }
 
   @media (max-width:760px){ .metrics{ grid-template-columns:repeat(2,1fr);} .lform{ grid-template-columns:1fr; } }
+  /* ===== 上传文件识别 ===== */
+  .drop-zone{ margin:10px 0 4px; border:2px dashed #d6dbe2; border-radius:10px; padding:18px; text-align:center; color:#6b7280; font-size:13px; cursor:pointer; transition:.2s; background:#fafbfc; }
+  .drop-zone:hover{ border-color:#6366f1; color:#374151; background:#f5f6ff; }
+  .drop-zone.drag{ border-color:#2f6fed; background:#eef2ff; color:#2f6fed; }
+  .recog-mask{ position:fixed; inset:0; background:rgba(17,24,39,.45); display:flex; align-items:center; justify-content:center; z-index:60; padding:20px; }
+  .recog-dialog{ background:#fff; border-radius:14px; width:min(880px,96vw); max-height:90vh; overflow:auto; box-shadow:0 20px 60px rgba(0,0,0,.3); padding:20px 22px; }
+  [data-theme="dark"] .recog-dialog{ background:#1f2430; color:#e5e7eb; }
+  .recog-h{ font-size:17px; font-weight:700; display:flex; align-items:center; gap:10px; }
+  .recog-count{ font-size:12px; font-weight:600; color:#fff; background:linear-gradient(135deg,#2f6fed,#6366f1); border-radius:20px; padding:2px 10px; }
+  .recog-sub{ font-size:13px; color:#6b7280; margin:6px 0 12px; }
+  .recog-list{ display:flex; flex-direction:column; gap:8px; }
+  .recog-row{ display:grid; grid-template-columns:26px 1.4fr 1.5fr 1fr .95fr .95fr; gap:8px; align-items:center; background:#f7f8fa; border:1px solid #eceef1; border-radius:9px; padding:8px 10px; }
+  [data-theme="dark"] .recog-row{ background:#262b36; border-color:#333a47; }
+  .recog-row .rc-chk{ width:auto; }
+  .recog-row input, .recog-row select{ font-size:13px; padding:6px 8px; border:1px solid #d6dbe2; border-radius:7px; width:100%; background:#fff; color:#111; }
+  [data-theme="dark"] .recog-row input, [data-theme="dark"] .recog-row select{ background:#1a1e27; color:#e5e7eb; border-color:#3a4150; }
+  .recog-raw{ margin-top:12px; font-size:12px; color:#6b7280; }
+  .recog-raw pre{ max-height:200px; overflow:auto; white-space:pre-wrap; background:#f3f4f6; border-radius:8px; padding:10px; font-size:12px; }
+  [data-theme="dark"] .recog-raw pre{ background:#161a22; }
+  .recog-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:16px; }
 </style>
 </head>
 <body>
@@ -401,9 +421,12 @@
         <button class="act b-ghost" id="btnExport" type="button">导出 JSON</button>
         <button class="act b-ghost" id="btnImport" type="button">导入 JSON</button>
         <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
+        <button class="act b-ghost" id="btnUpload" type="button">📎 上传文件识别</button>
+        <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
         <a class="act b-go" href="index.html">打开批量立项生成器 →</a>
         <span class="lib-meta" id="libMeta">共 0 个项目</span>
       </div>
+      <div class="drop-zone" id="dropZone">把 PDF / EML / Excel / CSV / TXT 文件拖到这里，或点上方「📎 上传文件识别」</div>
       <div style="overflow-x:auto;">
         <table class="lib-table" id="libTable"></table>
       </div>
@@ -411,6 +434,24 @@
   </div>
 
   <footer>本页面完全离线，数据存于本机浏览器，与「批量立项生成器」共用同一份数据。金额按您确认的「文件原值 = 最终申报人民币金额」计。</footer>
+</div>
+
+<!-- 文件识别依赖：SheetJS(Excel/CSV) + pdf.js(PDF 文字提取)，离线可用 -->
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+
+<!-- 上传文件识别：识别结果确认弹窗 -->
+<div id="recogMask" class="recog-mask" style="display:none;">
+  <div class="recog-dialog">
+    <div class="recog-h">识别结果（请确认后添加）<span id="recogCount" class="recog-count"></span></div>
+    <p class="recog-sub">已从上传文件中识别出以下候选立项。可修改字段、取消勾选不需要的项，确认后加入项目库；客户下拉可手动改。</p>
+    <div id="recogList" class="recog-list"></div>
+    <details class="recog-raw"><summary>查看原始提取文本</summary><pre id="recogRaw"></pre></details>
+    <div class="recog-actions">
+      <button class="act b-ghost" id="recogCancel" type="button">取消</button>
+      <button class="act b-primary" id="recogAdd" type="button">确认添加选中项</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -907,6 +948,273 @@ var CUSTOMERS = [
     reader.readAsText(file);
   }
 
+  /* ===== 上传文件识别（PDF / EML / Excel / CSV / TXT） ===== */
+  function matchClient(str){
+    if(!str) return null;
+    var s=String(str).trim().toLowerCase();
+    if(!s) return null;
+    var best=null, bestScore=0;
+    CUSTOMERS.forEach(function(c){
+      var name=(c.name||'').toLowerCase(), short=(c.short||'')||'', code=(c.code||'').toLowerCase();
+      var score=0;
+      if(name && s.indexOf(name)>=0) score=Math.max(score, name.length);
+      if(short && s.indexOf(short)>=0) score=Math.max(score, short.length+1);
+      if(code && s.indexOf(code)>=0) score=Math.max(score, 30);
+      if(score>bestScore){ bestScore=score; best=c; }
+    });
+    if(!best){
+      var at=s.indexOf('@');
+      if(at>=0){
+        var dom=s.slice(at+1).split(/[^a-z0-9.-]/i)[0];
+        if(dom){
+          var label=dom.split('.')[0];
+          CUSTOMERS.forEach(function(c){
+            var cands=[(c.short||'').toLowerCase(), (c.name||'').toLowerCase().replace(/[^a-z0-9]/gi,'')];
+            for(var ci2=0; ci2<cands.length; ci2++){
+              var t=cands[ci2]; if(!t) continue;
+              var tl=t.replace(/[^a-z0-9]/gi,'');
+              if(tl && (tl.indexOf(label)>=0 || label.indexOf(tl)>=0)){ best=c; bestScore=5; }
+            }
+          });
+        }
+      }
+    }
+    return best? {code:best.code, short:best.short||best.name, name:best.name} : null;
+  }
+  function cleanNum(s){
+    if(s==null) return '';
+    s=String(s).replace(/[, ¥$￥，]/g,'').replace(/[，]/g,'');
+    var m=/([0-9]+(?:[.][0-9]+)?)/.exec(s);
+    return m? m[1] : '';
+  }
+  function extractAmount(text){
+    if(!text) return '';
+    var re=/(?:金额|总额|总价|费用|合计|total|amount|invoice|price|报价|合同额|执行额)[^0-9]{0,12}([0-9][0-9.,]{2,})/gi;
+    var m, found=[];
+    while((m=re.exec(text))){ found.push(m[1]); }
+    if(found.length){ return cleanNum(found[found.length-1]); }
+    var re2=/[¥$￥€][ \t]*([0-9][0-9.,]{2,})/g; var best=0,bestS='';
+    while((m=re2.exec(text))){ var v=parseFloat(cleanNum(m[1])); if(v>best){best=v;bestS=cleanNum(m[1]);} }
+    if(bestS) return bestS;
+    var re3=/([0-9]{4,}(?:[.][0-9]+)?)/g; best=0;bestS='';
+    while((m=re3.exec(text))){ var v=parseFloat(m[1]); if(v>best){best=v;bestS=m[1];} }
+    return bestS;
+  }
+  function extractDates(text){
+    var res={startDate:'',endDate:''};
+    if(!text) return res;
+    var re=/([0-9]{4})[-/.年]([0-9]{1,2})[-/.月]([0-9]{1,2})/g; var ds=[], m;
+    while((m=re.exec(text))){
+      var y=m[1], mo=parseInt(m[2],10), d=parseInt(m[3],10);
+      if(mo>0&&mo<13&&d>0&&d<32) ds.push(y+'-'+('0'+mo).slice(-2)+'-'+('0'+d).slice(-2));
+    }
+    if(ds.length>=2){ res.startDate=ds[0]; res.endDate=ds[ds.length-1]; }
+    else if(ds.length===1){ res.startDate=ds[0]; }
+    return res;
+  }
+  function parseEml(raw){
+    var lines=raw.split(String.fromCharCode(10));
+    var head={}, i=0, cur=null;
+    for(;i<lines.length;i++){
+      var ln=lines[i];
+      if(ln===''){ i++; break; }
+      var ch=ln.charAt(0);
+      if((ch===' '||ch==='\t') && cur){ head[cur]+=' '+ln.trim(); continue; }
+      var ci=ln.indexOf(':');
+      if(ci>0){ cur=ln.slice(0,ci).toLowerCase(); head[cur]=ln.slice(ci+1).trim(); }
+    }
+    var bodyLines=lines.slice(i);
+    var body=bodyLines.join(String.fromCharCode(10));
+    function decH(s){
+      if(!s) return '';
+      return s.replace(/=[?]([^?]+)[?]([BbQq])[?]([^?]*)[?]=/g, function(_,enc,b,data){
+        try{
+          if(b.toLowerCase()==='b'){ var bin=atob(data); var bytes=Uint8Array.from(bin,function(ch){return ch.charCodeAt(0);}); return new TextDecoder('utf-8').decode(bytes); }
+          return data.replace(/_/g,' ');
+        }catch(e){ return data; }
+      });
+    }
+    var subj=decH(head.subject||'');
+    var from=decH(head.from||'');
+    var to=decH(head.to||'');
+    var date=head.date||'';
+    if(/quoted-printable/i.test(head['content-transfer-encoding']||'')){
+      var CRLF=String.fromCharCode(13)+String.fromCharCode(10);
+      body=body.split('='+CRLF).join('').replace(/=([0-9A-F]{2})/g, function(_,h){ return String.fromCharCode(parseInt(h,16)); });
+    }
+    return { from:from, to:to, subject:subj, date:date, body:body };
+  }
+  function emlToCandidate(p){
+    var client = matchClient(p.from) || matchClient(p.subject+' '+p.body);
+    var amt = extractAmount(p.body) || extractAmount(p.subject);
+    var dates = extractDates(p.body); if(!dates.startDate) dates=extractDates(p.subject);
+    var name = (p.subject||'').replace(/^re:[ ]*/i,'').replace(/^fw:[ ]*/i,'').replace(/[ \t]+/g,' ').trim();
+    if(!name || name.length<2) name = (client? client.short+' ':'') + (dates.startDate? dates.startDate.slice(0,7) : '');
+    return { name:name, clientCode:client?client.code:'', clientShort:client?client.short:'', clientName:client?client.name:'', amount:amt, startDate:dates.startDate, endDate:dates.endDate, _src:'邮件' };
+  }
+  function textToCandidate(text, srcLabel){
+    var client=matchClient(text);
+    var amt=extractAmount(text);
+    var dates=extractDates(text);
+    var lines=text.split(String.fromCharCode(10)).map(function(s){return s.trim();}).filter(Boolean);
+    function isNum(s){ for(var i=0;i<s.length;i++){ var cc=s.charCodeAt(i); if(cc<48||cc>57) return false; } return s.length>0; }
+    var name='';
+    for(var i=0;i<lines.length;i++){ if(lines[i].length>=4 && lines[i].length<=60 && !isNum(lines[i])){ name=lines[i]; break; } }
+    if(!name) name=(client?client.short+' ':'')+(dates.startDate?dates.startDate.slice(0,7):'');
+    return { name:name, clientCode:client?client.code:'', clientShort:client?client.short:'', clientName:client?client.name:'', amount:amt, startDate:dates.startDate, endDate:dates.endDate, _src:srcLabel };
+  }
+  function parseExcelFile(file, done){
+    var reader=new FileReader();
+    reader.onload=function(){
+      try{
+        var wb=XLSX.read(reader.result,{type:'array'});
+        var sheets=wb.SheetNames.map(function(name){
+          var ws=wb.Sheets[name];
+          var rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+          return {name:name, rows:rows};
+        });
+        done(null, sheets);
+      }catch(e){ done(e); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  function rowsToCandidates(rows){
+    if(!rows || !rows.length) return [];
+    var first=rows[0];
+    var keys=Object.keys(first);
+    function pick(aliases){
+      for(var k=0;k<keys.length;k++){ var kl=keys[k].toLowerCase(); for(var a=0;a<aliases.length;a++){ if(kl.indexOf(aliases[a])>=0) return keys[k]; } }
+      return '';
+    }
+    var kName=pick(['项目','名称','project','name','subject','标题']);
+    var kClient=pick(['客户','customer','client','甲方']);
+    var kAmt=pick(['金额','总额','total','amount','price','费用','合同']);
+    var kStart=pick(['开始','起','start','起始']);
+    var kEnd=pick(['结束','止','end','截至']);
+    var kCode=pick(['编号','code','项目编号']);
+    return rows.map(function(r){
+      var name=kName?r[kName]:'';
+      var clientText=kClient?(r[kClient]||''):'';
+      var c=clientText?matchClient(String(clientText)):null;
+      var amt=kAmt?cleanNum(r[kAmt]):'';
+      return {
+        name: name!=null?String(name):'',
+        clientCode: c?c.code:'', clientShort: c?c.short:'', clientName: c?c.name:'',
+        amount: amt,
+        startDate: kStart?(r[kStart]||''):'',
+        endDate: kEnd?(r[kEnd]||''):'',
+        projCode: kCode?(r[kCode]||''):'',
+        _src:'Excel行'
+      };
+    }).filter(function(c){ return (c.name && c.name.length) || c.clientCode || (c.amount && c.amount.length); });
+  }
+  function parsePdfFile(file, done){
+    if(typeof pdfjsLib==='undefined'){ done(new Error('PDF 解析库未加载，无法解析 PDF')); return; }
+    if(pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
+    var reader=new FileReader();
+    reader.onload=function(){
+      try{
+        pdfjsLib.getDocument({data:new Uint8Array(reader.result)}).promise.then(function(pdf){
+          var texts=[]; var pending=pdf.numPages;
+          for(var p=1;p<=pdf.numPages;p++){
+            (function(pp){ pdf.getPage(pp).then(function(page){ return page.getTextContent(); }).then(function(tc){
+              texts.push(tc.items.map(function(it){return it.str;}).join(' '));
+              pending--; if(pending===0) done(null, texts.join(String.fromCharCode(10)));
+            }).catch(function(){ pending--; if(pending===0) done(null, texts.join(String.fromCharCode(10))); }); })(p);
+          }
+        }).catch(function(e){ done(e); });
+      }catch(e){ done(e); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  function setUploading(b){ var b2=$('btnUpload'); if(!b2) return; b2.disabled=!!b; b2.textContent=b?'解析中…':'📎 上传文件识别'; }
+  function handleFiles(files){
+    files=Array.prototype.slice.call(files||[]);
+    if(!files.length) return;
+    setUploading(true);
+    var allCands=[]; var rawTexts={};
+    var pending=files.length;
+    function finishOne(){ pending--; if(pending<=0){ setUploading(false); showRecognition(allCands, rawTexts); } }
+    files.forEach(function(file){
+      var ext=(file.name.split('.').pop()||'').toLowerCase();
+      if(ext==='json'){ importJson(file); finishOne(); return; }
+      if(ext==='xlsx'||ext==='xls'||ext==='csv'){
+        parseExcelFile(file, function(err, sheets){
+          if(err){ setStatus('解析 '+file.name+' 失败：'+(err.message||err), true); }
+          else { sheets.forEach(function(sh){ rowsToCandidates(sh.rows).forEach(function(c){ c._src='Excel·'+sh.name; allCands.push(c); }); }); }
+          finishOne();
+        });
+        return;
+      }
+      if(ext==='pdf'){
+        parsePdfFile(file, function(err, text){
+          if(err){ setStatus('解析 PDF '+file.name+' 失败：'+(err.message||err), true); }
+          else { rawTexts[file.name]=text; allCands.push(textToCandidate(text, 'PDF·'+file.name)); }
+          finishOne();
+        });
+        return;
+      }
+      var reader=new FileReader();
+      reader.onload=function(){
+        var raw=reader.result||'';
+        if(ext==='eml'){ var p=parseEml(raw); rawTexts[file.name]='From: '+p.from+String.fromCharCode(10)+'To: '+p.to+String.fromCharCode(10)+'Subject: '+p.subject+String.fromCharCode(10)+'Date: '+p.date+String.fromCharCode(10)+String.fromCharCode(10)+p.body; allCands.push(emlToCandidate(p)); }
+        else { rawTexts[file.name]=raw; allCands.push(textToCandidate(raw, (ext||'txt')+'·'+file.name)); }
+        finishOne();
+      };
+      reader.onerror=function(){ finishOne(); };
+      reader.readAsText(file);
+    });
+  }
+  var REC_CAND=null;
+  function showRecognition(cands, rawTexts){
+    REC_CAND=cands||[];
+    var box=$('recogList'); box.innerHTML='';
+    if(!REC_CAND.length){ setStatus('未能从文件中识别出可立项内容（可能无文字层/无匹配字段）。已附原始文本供参考。', true); }
+    var rawAll=[]; Object.keys(rawTexts).forEach(function(k){ rawAll.push('===== '+k+' ====='+String.fromCharCode(10)+(rawTexts[k]||'').slice(0,4000)); });
+    $('recogRaw').textContent=rawAll.join(String.fromCharCode(10)+String.fromCharCode(10));
+    REC_CAND.forEach(function(c){
+      var row=document.createElement('div'); row.className='recog-row';
+      var chk=document.createElement('input'); chk.type='checkbox'; chk.checked=true; chk.className='rc-chk';
+      var name=document.createElement('input'); name.type='text'; name.className='rc-name'; name.value=c.name||''; name.placeholder='项目名称';
+      var sel=document.createElement('select'); sel.className='rc-client';
+      var opt0=document.createElement('option'); opt0.value=''; opt0.textContent='— 未匹配客户 —'; sel.appendChild(opt0);
+      CUSTOMERS.forEach(function(ct){ var o=document.createElement('option'); o.value=ct.code; o.textContent=(ct.short||ct.name)+' ('+ct.code.slice(0,10)+'…)'; if(ct.code===c.clientCode) o.selected=true; sel.appendChild(o); });
+      var amt=document.createElement('input'); amt.type='text'; amt.className='rc-amt'; amt.value=c.amount||''; amt.placeholder='金额';
+      var sd=document.createElement('input'); sd.type='date'; sd.className='rc-sd'; sd.value=c.startDate||'';
+      var ed=document.createElement('input'); ed.type='date'; ed.className='rc-ed'; ed.value=c.endDate||'';
+      row.appendChild(chk); row.appendChild(name); row.appendChild(sel); row.appendChild(amt); row.appendChild(sd); row.appendChild(ed);
+      box.appendChild(row);
+    });
+    $('recogCount').textContent= REC_CAND.length? ('共 '+REC_CAND.length+' 项') : '';
+    $('recogMask').style.display='flex';
+  }
+  function closeRecognition(){ $('recogMask').style.display='none'; REC_CAND=null; }
+  function confirmRecognition(){
+    var box=$('recogList'); var rows=box.querySelectorAll('.recog-row');
+    var arr=load(); var added=0;
+    rows.forEach(function(row){
+      var chk=row.querySelector('.rc-chk');
+      if(!chk.checked) return;
+      var name=row.querySelector('.rc-name').value.trim();
+      var code=row.querySelector('.rc-client').value;
+      if(!name && !code) return;
+      var c=code?findCust(code):null;
+      var obj={};
+      FIELDS.forEach(function(k){ obj[k]=''; });
+      obj.name=name; obj.projCode=''; obj.startDate=row.querySelector('.rc-sd').value; obj.endDate=row.querySelector('.rc-ed').value;
+      obj.amount=cleanNum(row.querySelector('.rc-amt').value);
+      obj.costRate=''; obj.budget=''; obj.finalAmount='';
+      obj.p1='0'; obj.p2='0'; obj.p3='0'; obj.p4='0'; obj.p5='0';
+      obj.clientCode=code||''; obj.clientShort=c?(c.short||c.name):''; obj.clientName=c?c.name:'';
+      obj.clientNature=c?(c.category==='成交客户'?'老客户老部门':'新客户'):'老客户老部门';
+      obj.id=uid(); obj.savedAt=new Date().toISOString();
+      arr.push(obj); added++;
+    });
+    if(added){ save(arr); renderLibList(); render(); }
+    closeRecognition();
+    setStatus('已从上传文件添加 '+added+' 个项目到项目库。', false);
+  }
+
   /* ===== 主题 ===== */
   function applyTheme(t){
     if(t==='dark') document.documentElement.setAttribute('data-theme','dark');
@@ -1068,6 +1376,19 @@ var CUSTOMERS = [
     $('btnExport').onclick=exportJson;
     $('btnImport').onclick=function(){ $('fileImport').click(); };
     $('fileImport').onchange=function(){ if(this.files&&this.files[0]) importJson(this.files[0]); this.value=''; };
+
+    // 上传文件识别（PDF / EML / Excel / CSV / TXT）
+    $('btnUpload').onclick=function(){ $('fileUpload').click(); };
+    $('fileUpload').onchange=function(){ if(this.files&&this.files.length) handleFiles(this.files); this.value=''; };
+    $('recogCancel').onclick=closeRecognition;
+    $('recogAdd').onclick=confirmRecognition;
+    $('recogMask').addEventListener('click', function(e){ if(e.target===$('recogMask')) closeRecognition(); });
+    var _dz=$('dropZone');
+    ['dragenter','dragover'].forEach(function(ev){ _dz.addEventListener(ev, function(e){ e.preventDefault(); _dz.classList.add('drag'); }); });
+    ['dragleave','drop'].forEach(function(ev){ _dz.addEventListener(ev, function(e){ e.preventDefault(); _dz.classList.remove('drag'); }); });
+    _dz.addEventListener('drop', function(e){ var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) handleFiles(f); });
+    _dz.onclick=function(){ $('fileUpload').click(); };
+    if(typeof pdfjsLib!=='undefined' && pdfjsLib.GlobalWorkerOptions) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
     $('selAll').onchange=function(){ var v=this.checked; $('libTable').querySelectorAll('.row-chk').forEach(function(cb){ cb.checked=v; }); };
 
     // 看板卡片/列表「编辑」→ 切到库 tab 并打开编辑；「解散」→ 还原合并项

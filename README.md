@@ -4,20 +4,35 @@
 
 适用于每月月底批量申报执行额 / 立项时，把繁琐的手工填表变成「选 + 填」。
 
-## 两个独立页面（工作流顺序）
+## 页面结构（通过浏览器 localStorage 共享数据）
 
-整个工具分两个独立页面，**通过浏览器 localStorage 共享同一份「项目库」数据**（键 `bpi_project_library_v1`）：
+数据存在本机浏览器，键 `bpi_project_library_v1` 为**进行中项目库**，被以下三个页面共用；`bpi_archive_v1` 为**历史归档库**，仅 `dashboard.html` 使用。
 
-1. **`library.html` —— ① 项目库（准备立项的项目）**：平时把每个月要立项的项目存进来（含客户、金额、起止、人天），可编辑/删除、导出/导入 JSON 备份。这是**数据源**，优先级第一。
-2. **`index.html` —— ② 批量立项文件生成器**：点「从项目库导入…」勾选要立项的项目，一键载入 ② 区，检查后生成文件。生成器是项目库的**消费者**，不回写项目库。
+1. **`dashboard.html` —— 主页面（推荐日常使用）**：一个页面内含三个视图（顶部切换）：
+   - **看板**：按状态/客户汇总立项金额、预算、人天等指标；
+   - **项目库**：维护「进行中」项目（增删改、导出/导入 JSON、上传 PDF/EML/Excel 识别自动建项），是数据源；
+   - **历史项目库**：已归档项目，可恢复或永久删除。
+   - 顶部「🗂 同步」= 本地多设备同步（见下）。
+2. **`index.html` —— 批量立项文件生成器**：点「从项目库导入…」勾选项目载入，检查后一键生成 3 个 xlsx 并打包下载。生成器是项目库的**消费者**，不回写项目库。
+3. **`library.html` —— 项目库独立轻量页**：仅维护进行中项目，与 `dashboard.html` 共用同一份项目库数据。
 
-> ③ 历史项目库（立项完成后的归档）为待建项，后续扩展。
+## 多设备同步（本地文件，不依赖 GitHub / 不上传服务器）
+
+旧版的「GitHub 云同步」已移除：它需要手动填写 Token、在 Netlify 上因跨域/鉴权容易失败、会把项目数据写进代码仓库（仓库若公开则金额/客户名泄露），且每次同步会触发重新部署。
+
+现改为**本地文件同步**：
+- 点「🗂 同步」→「📂 连接同步文件」选一个本地 JSON（支持 Chrome / Edge 的 File System Access API）。连接后，每次项目库变动会**自动写入**该文件，并用 IndexedDB 持久化文件句柄，跨会话、同浏览器内自动生效。
+- **推荐工作流**：把这个同步 JSON 放进 **百度网盘 / 企业微信微盘** 的同步文件夹；云盘自动把它同步到你的其他设备。在另一台设备打开本页面，点「📂 连接同步文件」选同一个文件即可。
+- **不支持自动同步的浏览器**（Firefox / Safari，或本地双击 `file://` 打开）用「📤 导出 / 📥 导入备份」手动搬文件即可。
+- 数据**不上传任何服务器、不需要 Token、不需要 GitHub**，隐私风险低。
 
 ## 直接用法
 
-双击打开 `library.html` 先维护项目；再到 `index.html` 引用生成（推荐 Chrome / Edge）。
+推荐用 Chrome / Edge 打开 `dashboard.html`：
+- 在「项目库」视图维护每月要立项的项目（客户、金额、起止、人天），可编辑/删除、导出/导入 JSON 备份、上传文件识别建项；
+- 需要生成文件时切到 `index.html`（页面内「打开批量立项生成器 →」），从项目库导入后生成。
 
-**`index.html` 内：**
+`index.html` 内：
 1. **① 固定信息**：公司归口字段已预填，可折叠，一般每月只改一次。
 2. **② 每个项目**：点「+ 添加项目」加一行，或点「从项目库导入…」勾选项目载入。每行顶部选客户（自动带出编号/名称/简称，编号唯一只读），再填项目名称、起止日期、项目金额、预算金额、决算金额。预算占比自动算；决算金额留空 = 等于预算。
    - 注：**项目编号只在生成「API预算决算」时需要**（立项时还没有编号，故仅勾选该文件时才校验必填）。
@@ -32,7 +47,8 @@
 ## 源码结构
 
 - `template.html` + `gen.js` + `app.js` + `picker.js` + `customers.js` + `vendor/` → 内联进自包含的 `index.html`（生成器）
-- `library.html` + `library.js` + `picker.js` + `customers.js` → 项目库独立页面（`picker.js` 为两个页面**共用**的客户搜索组件，避免重复实现）
+- `dashboard.html` + `dashboard` 内联逻辑 + `picker.js` + `customers.js` → 主页面（看板/项目库/历史库/本地同步/上传识别），直接编辑即可，无需构建
+- `library.html` + `library.js` → 项目库独立轻量页（与 dashboard 共用项目库数据）
 - `gen.js`：纯生成逻辑（与 DOM 解耦，可被 Node 单测）
 
 ## 重新构建（改了生成器源码后）
@@ -42,12 +58,12 @@ python build_html.py
 ```
 
 会把 `template.html` + `gen.js` + `app.js` + `picker.js` + `customers.js` + `vendor/` 重新内联进单一 `index.html`。
-`library.html` 为独立页面，直接编辑 `library.html` / `library.js` 即可，无需构建。
+`dashboard.html` / `library.html` 为独立页面，直接编辑其 HTML/JS 即可，无需构建。
 更新客户列表时，重新用客户档案表生成 `customers.js` 再构建。
 
 ## 部署到 Netlify（静态站点）
 
-本仓库是纯静态站点，`index.html` 已自包含（库已内联）；`library.html` 与其同目录引用 `picker.js` / `library.js` / `customers.js`。
+本仓库是纯静态站点，`index.html` 已自包含（库已内联）；`dashboard.html`、`library.html` 与其同目录引用 `picker.js` / `library.js` / `customers.js`。
 
 在 Netlify 中连接此 GitHub 仓库后：
 - **Build command**：`python build_html.py`（从源码重建 `index.html`）
@@ -55,3 +71,5 @@ python build_html.py
 - 分支：`main`
 
 推送代码即自动触发 Netlify 重新部署。
+
+> 注意：本地同步依赖浏览器的 File System Access API（Chrome / Edge 的 https 页面可用）。Netlify 上部署的页面满足 https 条件；本地 `file://` 双击打开时不支持自动同步，请用「导出 / 导入备份」。

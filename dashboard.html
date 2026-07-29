@@ -295,7 +295,7 @@
     <span class="nav-tip">看板总览 + 项目库维护 + 历史归档，共用同一份数据</span>
   </nav>
 
-  <header>
+  <header id="header">
     <div class="h-row">
       <div>
         <h1>立项总览</h1>
@@ -305,7 +305,7 @@
     </div>
   </header>
 
-  <div class="metrics">
+  <div class="metrics" id="metrics">
     <div class="metric"><div class="m-label">总申报金额（人民币）</div><div class="m-val" id="mTotal">0.00</div><div class="m-unit">元</div></div>
     <div class="metric"><div class="m-label">储备项目</div><div class="m-val" id="mCount">0</div><div class="m-unit">项</div></div>
     <div class="metric"><div class="m-label">涉及客户</div><div class="m-val" id="mClients">0</div><div class="m-unit">家</div></div>
@@ -314,13 +314,8 @@
 
   <div class="src-chips" id="srcChips"></div>
 
-  <div class="tabs">
-    <button class="tab-btn active" id="tabKanban" type="button">📊 看板</button>
-    <button class="tab-btn" id="tabLib" type="button">📁 项目库</button>
-  </div>
-
-  <!-- ===== 看板区 ===== -->
-  <div id="viewKanban">
+  <!-- ===== 统一工作台：看板总览 + 项目库维护 合并为一页 ===== -->
+  <div id="viewMain">
     <div class="board-bar">
       <div class="seg">
         <button class="seg-btn" id="vKanban" type="button">看板</button>
@@ -334,10 +329,18 @@
       <label class="sel-all"><input type="checkbox" id="selView"> 全选当前</label>
       <span class="spacer"></span>
       <span class="sel-info" id="selInfo">已选 0 项</span>
+      <button class="act b-ghost" id="btnAdd" type="button">➕ 添加项目</button>
       <button class="act b-accent" id="mergeSel" type="button" disabled>合并选中项</button>
+      <button class="act b-ghost" id="btnArchive" type="button">📦 归档选中</button>
+      <button class="act b-ghost" id="btnDelSel" type="button">🗑 删除选中</button>
+      <button class="act b-ghost" id="btnUpload" type="button">📎 上传识别</button>
+      <button class="act b-cloud" id="btnSync" type="button">🗂 同步</button>
+      <button class="act b-ghost" id="btnExport" type="button">导出JSON</button>
+      <button class="act b-ghost" id="btnImport" type="button">导入JSON</button>
+      <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
       <button class="act b-primary" id="goGen" type="button">去批量立项 (0)</button>
       <button class="act b-ghost" id="reloadSeed" type="button">重新载入整理数据</button>
-      <a class="act b-ghost" href="#lib" id="toLib">打开项目库</a>
+      <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
     </div>
 
     <div class="kanban" id="board"></div>
@@ -353,30 +356,8 @@
 
     <div class="status" id="status" style="display:none;"></div>
 
-    <!-- 合并立项对话框 -->
-    <div class="mask" id="mergeMask">
-      <div class="dialog">
-        <div class="dialog-h">合并为一项立项</div>
-        <p class="dialog-sub">合并后将以「一个合计金额」去批量立项。原始项目从库中移除，明细保存在合并项内，可随时「解散」还原。</p>
-        <div class="merge-members"><ul id="mergeList"></ul><div class="merge-tot">合计 <b id="mergeTotal">0.00</b> 元</div></div>
-        <label class="fld">合并后项目名称
-          <input id="mergeName" type="text" placeholder="合并立项（N 项）">
-        </label>
-        <div class="fld-row">
-          <label class="fld">开始日期<input id="mergeStart" type="date"></label>
-          <label class="fld">结束日期<input id="mergeEnd" type="date"></label>
-        </div>
-        <div class="dialog-actions">
-          <button class="act b-ghost" id="mergeCancel" type="button">取消</button>
-          <button class="act b-primary" id="mergeOk" type="button">合并并保留选中</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== 项目库区 ===== -->
-  <div id="viewLib" style="display:none;">
-    <div class="lib-card">
+    <!-- 添加 / 编辑项目表单 -->
+    <div class="lib-card" id="editCard" style="display:none;">
       <h2 id="formTitle">添加项目</h2>
       <p class="lib-hint">客户选好后，编号/简称/全称自动锁定为客户档案里的唯一值。项目编号立项后才会有，这里可先留空。</p>
       <div class="lform">
@@ -453,38 +434,38 @@
       </div>
     </div>
 
+    <!-- 合并立项对话框 -->
+    <div class="mask" id="mergeMask">
+      <div class="dialog">
+        <div class="dialog-h">合并为一项立项</div>
+        <p class="dialog-sub">合并后将以「一个合计金额」去批量立项。原始项目从库中移除，明细保存在合并项内，可随时「解散」还原。</p>
+        <div class="merge-members"><ul id="mergeList"></ul><div class="merge-tot">合计 <b id="mergeTotal">0.00</b> 元</div></div>
+        <label class="fld">合并后项目名称
+          <input id="mergeName" type="text" placeholder="合并立项（N 项）">
+        </label>
+        <div class="fld-row">
+          <label class="fld">开始日期<input id="mergeStart" type="date"></label>
+          <label class="fld">结束日期<input id="mergeEnd" type="date"></label>
+        </div>
+        <div class="dialog-actions">
+          <button class="act b-ghost" id="mergeCancel" type="button">取消</button>
+          <button class="act b-primary" id="mergeOk" type="button">合并并保留选中</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 历史项目库（独立） ===== -->
+  <div id="viewArchive" style="display:none;">
     <div class="lib-card">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-        <h2 style="margin:0;">项目列表</h2>
+        <h2 style="margin:0;">历史项目库（已归档）</h2>
         <div class="lib-seg">
-          <button class="lib-seg-btn active" id="segActive" type="button">📋 进行中 <span id="cntActive">0</span></button>
-          <button class="lib-seg-btn" id="segArchive" type="button">🗄 已归档 <span id="cntArchive">0</span></button>
+          <button class="lib-seg-btn" id="segActive" type="button">📋 进行中 <span id="cntActive">0</span></button>
+          <button class="lib-seg-btn active" id="segArchive" type="button">🗄 已归档 <span id="cntArchive">0</span></button>
         </div>
       </div>
-
-      <!-- 进行中视图 -->
-      <div id="libActiveView">
-        <div class="lib-toolbar">
-          <label style="font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="selAll"> 全选</label>
-          <button class="btn-archive" id="btnArchive" type="button">📦 归档选中</button>
-          <button class="act b-ghost" id="btnDelSel" type="button">🗑 删除选中</button>
-          <button class="act b-ghost" id="btnExport" type="button">导出 JSON</button>
-          <button class="act b-ghost" id="btnImport" type="button">导入 JSON</button>
-          <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
-          <button class="act b-ghost" id="btnUpload" type="button">📎 上传文件识别</button>
-          <button class="act b-cloud" id="btnSync" type="button">🗂 同步</button>
-          <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
-          <a class="act b-go" href="index.html">打开批量立项生成器 →</a>
-          <span class="lib-meta" id="libMeta">共 0 个项目</span>
-        </div>
-        <div class="drop-zone" id="dropZone">把 PDF / EML / Excel / CSV / TXT 文件拖到这里，或点上方「📎 上传文件识别」</div>
-        <div style="overflow-x:auto;">
-          <table class="lib-table" id="libTable"></table>
-        </div>
-      </div>
-
-      <!-- 已归档视图 -->
-      <div id="libArchiveView" style="display:none;">
+      <div id="libArchiveView">
         <div class="lib-toolbar">
           <label style="font-size:13px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" id="selAllArch"> 全选</label>
           <button class="btn-restore" id="btnRestore" type="button">↩ 恢复选中</button>
@@ -499,6 +480,7 @@
     </div>
   </div>
 
+
   <footer>数据默认存于本机浏览器，与「批量立项生成器」共用同一份数据；点「🗂 同步」可把项目库备份到本地 JSON 文件（建议放在百度网盘 / 企业微信微盘同步文件夹），实现多设备同步；也支持手动「导出 / 导入备份」。数据不上传任何服务器、不需要 Token。金额按您确认的「文件原值 = 最终申报人民币金额」计。</footer>
 </div>
 
@@ -511,6 +493,7 @@
   <div class="recog-dialog">
     <div class="recog-h">识别结果（请确认后添加）<span id="recogCount" class="recog-count"></span></div>
     <p class="recog-sub">已从上传文件中识别出以下候选立项。可修改字段、取消勾选不需要的项，确认后加入项目库；客户下拉可手动改。</p>
+    <div id="dropZone" class="drop-zone">把文件拖到这里，或点击选择（支持 PDF / 邮件 / Excel / CSV / TXT / JSON）</div>
     <div id="recogList" class="recog-list"></div>
     <details class="recog-raw"><summary>查看原始提取文本</summary><pre id="recogRaw"></pre></details>
     <div class="recog-actions">
@@ -716,7 +699,7 @@ var CUSTOMERS = [
     if($('libArchiveView')) $('libArchiveView').style.display=isA?'':'none';
     if($('segActive')) $('segActive').classList.toggle('active',!isA);
     if($('segArchive')) $('segArchive').classList.toggle('active',isA);
-    if(isA) renderArchiveList(); else renderLibList();
+    if(isA) renderArchiveList(); else render();
   }
   function renderArchiveList(){
     var arr=loadArchive();
@@ -753,15 +736,23 @@ var CUSTOMERS = [
     return ids;
   }
   function archiveSel(){
-    var ids=getSelIds($('libActiveView'),'.row-chk');
-    if(!ids.length){ setStatus('请先勾选要归档的项目。', true); return; }
+    var ids=Object.keys(selected);
+    if(!ids.length){ setStatus('请先勾选要归档的项目（用每行左侧的复选框）。', true); return; }
     var lib=load(), arch=loadArchive(), keep=[], moved=0;
     var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
     lib.forEach(function(x){ if(idSet[x.id]){ x.archivedAt=Date.now(); arch.push(x); moved++; } else keep.push(x); });
     save(keep); saveArchive(arch);
-    renderLibList(); renderArchiveList(); updateLibCounts(); render();
-    if($('selAll')) $('selAll').checked=false;
+    ids.forEach(function(id){ delete selected[id]; });
+    render(); renderArchiveList(); updateLibCounts();
     setStatus('已归档 '+moved+' 个项目到历史项目库。', false);
+  }
+  function archiveOne(id){
+    var lib=load(), arch=loadArchive(), idx=-1;
+    for(var i=0;i<lib.length;i++){ if(lib[i].id===id){ idx=i; break; } }
+    if(idx<0) return;
+    var p=lib[idx]; p.archivedAt=Date.now(); arch.push(p); lib.splice(idx,1);
+    save(lib); saveArchive(arch); render(); renderArchiveList(); updateLibCounts();
+    setStatus('已归档 1 个项目到历史项目库。', false);
   }
   function restoreSel(){
     var ids=getSelIds($('libArchiveView'),'.arch-chk');
@@ -770,7 +761,7 @@ var CUSTOMERS = [
     var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
     arch.forEach(function(x){ if(idSet[x.id]){ delete x.archivedAt; lib.push(x); moved++; } else keep.push(x); });
     save(lib); saveArchive(keep);
-    renderLibList(); renderArchiveList(); updateLibCounts(); render();
+    renderArchiveList(); updateLibCounts(); render();
     if($('selAllArch')) $('selAllArch').checked=false;
     setStatus('已恢复 '+moved+' 个项目到进行中。', false);
   }
@@ -781,7 +772,7 @@ var CUSTOMERS = [
     var p=arch[idx]; delete p.archivedAt; lib.push(p);
     arch.splice(idx,1);
     save(lib); saveArchive(arch);
-    renderLibList(); renderArchiveList(); updateLibCounts(); render();
+    renderArchiveList(); updateLibCounts(); render();
     setStatus('已恢复 1 个项目到进行中。', false);
   }
   function delArchiveOne(id){
@@ -790,13 +781,13 @@ var CUSTOMERS = [
     setStatus('已从历史项目库永久删除 1 个项目。', false);
   }
   function delSel(){
-    var ids=getSelIds($('libActiveView'),'.row-chk');
-    if(!ids.length){ setStatus('请先勾选要删除的项目。', true); return; }
+    var ids=Object.keys(selected);
+    if(!ids.length){ setStatus('请先勾选要删除的项目（用每行左侧的复选框）。', true); return; }
     if(!confirm('确认删除选中的 '+ids.length+' 个项目？此操作不可撤销。')) return;
     var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
     var arr=load().filter(function(x){ return !idSet[x.id]; });
-    save(arr); renderLibList(); updateLibCounts(); render();
-    if($('selAll')) $('selAll').checked=false;
+    ids.forEach(function(id){ delete selected[id]; });
+    save(arr); render(); updateLibCounts();
     setStatus('已删除 '+ids.length+' 个项目。', false);
   }
   function delArchiveSel(){
@@ -878,7 +869,7 @@ var CUSTOMERS = [
     if(x._merge && x.members && x.members.length) client='多客户 · '+x.members.length+' 项';
     var period=(x.startDate||'?')+' ~ '+(x.endDate||'?');
     var code=x.projCode ? ('<span class="card-code">编号 '+esc(x.projCode)+'</span>') : '';
-    var editLink='<a class="card-edit" href="#lib" data-edit="'+escAttr(x.id)+'">在库里编辑 →</a>';
+    var editLink='<a class="card-edit" href="#" data-edit="'+escAttr(x.id)+'">编辑 →</a>';
     if(x._merge) editLink+=' <a class="card-edit lk-warn" href="#" data-unmerge="'+escAttr(x.id)+'">解散</a>';
     return '<div class="kanban-card'+(x._merge?' card-merge':'')+'">'
       + '<div class="card-top"><label class="sel-lbl"><input type="checkbox" class="sel" data-sel="'+escAttr(x.id)+'"'+(selected[x.id]?' checked':'')+'></label>'
@@ -974,7 +965,9 @@ var CUSTOMERS = [
         var client=x.clientShort||x.clientName||'—';
         if(x._merge && x.members && x.members.length) client='多客户 · '+x.members.length+' 项';
         var period=(x.startDate||'?')+' ~ '+(x.endDate||'?');
-        var ops='<a class="lk" href="#lib" data-edit="'+escAttr(x.id)+'">编辑 →</a>';
+        var ops='<a class="lk" href="#" data-edit="'+escAttr(x.id)+'">编辑</a>'
+          + ' <a class="lk" href="#" data-arch="'+escAttr(x.id)+'">归档</a>'
+          + ' <a class="lk lk-warn" href="#" data-del="'+escAttr(x.id)+'">删除</a>';
         if(x._merge) ops+=' <a class="lk lk-warn" href="#" data-unmerge="'+escAttr(x.id)+'">解散</a>';
         html+='<tr class="row'+(x._merge?' row-merge':'')+'">'
           + '<td style="text-align:center;"><input type="checkbox" class="sel" data-sel="'+escAttr(x.id)+'"'+(selected[x.id]?' checked':'')+'></td>'
@@ -1060,6 +1053,7 @@ var CUSTOMERS = [
     $('formTitle').textContent='添加项目';
     $('cancelEdit').style.display='none';
     $('saveProj').textContent='保存项目';
+    $('editCard').style.display='none';
   }
   function onSave(){
     var obj=readForm();
@@ -1071,47 +1065,19 @@ var CUSTOMERS = [
     } else {
       obj.id=uid(); obj.savedAt=new Date().toISOString(); arr.push(obj);
     }
-    save(arr); renderLibList(); render(); resetForm();
+    save(arr); render(); resetForm();
     setStatus(wasEdit?'已保存修改。':'已添加到项目库。', false);
   }
   function editProj(id){
     var arr=load();
     for(var i=0;i<arr.length;i++){ if(arr[i].id===id){ fillForm(arr[i]); break; } }
+    $('editCard').style.display='';
     $('formTitle').scrollIntoView({behavior:'smooth',block:'start'});
   }
   function deleteProj(id){
     var arr=load().filter(function(x){ return x.id!==id; });
-    save(arr); renderLibList(); render();
+    save(arr); render();
     setStatus('已删除 1 个项目。', false);
-  }
-  function renderLibList(){
-    var arr=load();
-    $('libMeta').textContent='共 '+arr.length+' 个项目';
-    var tbl=$('libTable');
-    if(!arr.length){
-      tbl.innerHTML='<tbody><tr><td class="lib-empty">项目库为空。在上方添加待立项项目。</td></tr></tbody>';
-      return;
-    }
-    var head='<thead><tr><th style="width:34px;"></th><th>项目名称</th><th>客户</th><th>金额</th><th>起止日期</th><th>项目编号</th><th style="width:120px;">操作</th></tr></thead>';
-    var body='<tbody>';
-    arr.forEach(function(x){
-      var amt=(x.amount && !isNaN(parseFloat(x.amount)))
-        ? Number(x.amount).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-      body+='<tr>';
-      body+='<td><input type="checkbox" class="row-chk" data-id="'+escAttr(x.id)+'"></td>';
-      body+='<td>'+esc(x.name||'—')+'</td>';
-      body+='<td>'+esc(x.clientShort||x.clientName||'—')+'</td>';
-      body+='<td class="money">'+amt+'</td>';
-      body+='<td>'+esc(x.startDate||'?')+' ~ '+esc(x.endDate||'?')+'</td>';
-      body+='<td>'+esc(x.projCode||'—')+'</td>';
-      body+='<td><button type="button" class="btn-edit" data-id="'+escAttr(x.id)+'">编辑</button><button type="button" class="btn-del" data-id="'+escAttr(x.id)+'">删除</button></td>';
-      body+='</tr>';
-    });
-    body+='</tbody>';
-    tbl.innerHTML=head+body;
-    tbl.querySelectorAll('.btn-edit').forEach(function(b){ b.onclick=function(){ editProj(b.getAttribute('data-id')); }; });
-    tbl.querySelectorAll('.btn-del').forEach(function(b){ b.onclick=function(){ deleteProj(b.getAttribute('data-id')); }; });
-    updateLibCounts();
   }
   function pad(n){ return n<10?'0'+n:''+n; }
   function stamp(){
@@ -1150,7 +1116,7 @@ var CUSTOMERS = [
           parsed.archive.forEach(function(it){ if(!it||typeof it!=='object') return; if(!it.id) it.id=uid(); if(!ax[it.id]){ a2.push(it); ax[it.id]=true; aAdd++; } });
           saveArchive(a2);
         }
-        renderLibList(); renderArchiveList(); updateLibCounts(); render();
+        renderArchiveList(); updateLibCounts(); render();
         setStatus('导入完成：进行中 +'+added+'（跳过 '+merged+'）'+(parsed&&Array.isArray(parsed.archive)?'；归档已合并。':''), false);
       }catch(e){ setStatus('导入失败：'+(e&&e.message?e.message:e), true); }
     };
@@ -1220,7 +1186,7 @@ var CUSTOMERS = [
         var a2=loadArchive(); var ax={}; a2.forEach(function(x){ ax[x.id]=true; }); var aAdd=0;
         arch.forEach(function(it){ if(!it||typeof it!=='object') return; if(!it.id) it.id=uid(); if(!ax[it.id]){ a2.push(it); ax[it.id]=true; aAdd++; } });
         saveArchive(a2);
-        renderLibList(); renderArchiveList(); updateLibCounts(); render();
+        renderArchiveList(); updateLibCounts(); render();
         setSyncStatus('已同步：进行中 +'+added+'（跳过 '+merged+'），归档 +'+aAdd+'。', false);
       }catch(e){ setSyncStatus('同步失败：'+(e&&e.message?e.message:e), true); }
     };
@@ -1490,7 +1456,7 @@ var CUSTOMERS = [
       obj.id=uid(); obj.savedAt=new Date().toISOString();
       arr.push(obj); added++;
     });
-    if(added){ save(arr); renderLibList(); render(); }
+    if(added){ save(arr); render(); }
     closeRecognition();
     setStatus('已从上传文件添加 '+added+' 个项目到项目库。', false);
   }
@@ -1515,30 +1481,21 @@ var CUSTOMERS = [
     currentTopNav=which;
     $('navDash').classList.toggle('nav-active', which==='dash');
     $('navArchive').classList.toggle('nav-active', which==='archive');
-    // 根据导航切换内容区
     if(which==='dash'){
-      showTab('kanban');
+      $('viewMain').style.display='';
+      $('viewArchive').style.display='none';
       $('header').style.display='';
       $('metrics').style.display='';
       $('srcChips').style.display='';
-      $('tabs').style.display='';
+      render();
     } else {
-      showTab('lib');
-      switchLib('archive');
-      // 归档视图隐藏看板专属区域，避免混淆
+      $('viewMain').style.display='none';
+      $('viewArchive').style.display='';
       $('header').style.display='none';
       $('metrics').style.display='none';
       $('srcChips').style.display='none';
-      $('tabs').style.display='none';
+      renderArchiveList(); updateLibCounts();
     }
-  }
-  function showTab(t){
-    var isK=(t==='kanban');
-    $('viewKanban').style.display=isK?'':'none';
-    $('viewLib').style.display=isK?'none':'';
-    $('tabKanban').classList.toggle('active',isK);
-    $('tabLib').classList.toggle('active',!isK);
-    if(isK) render(); else { renderLibList(); updateLibCounts(); if(libView==='archive') renderArchiveList(); }
   }
   function syncBtns(){
     $('gSource').classList.toggle('active',groupMode==='source');
@@ -1631,7 +1588,7 @@ var CUSTOMERS = [
       var added=mergeSeed(); render();
       setStatus(added?('已合并整理数据：新增 '+added+' 项（相同 ID 已跳过）'):'整理数据已全部存在，无新增。', false);
     };
-    $('toLib').onclick=function(e){ e.preventDefault(); if(currentTopNav==='archive') switchTopNav('dash'); showTab('lib'); };
+    // toLib removed (no more separate project-library tab)
 
     // 多选 → 批量立项
     $('selView').onchange=function(){
@@ -1665,14 +1622,13 @@ var CUSTOMERS = [
     });
 
     // tab 按钮
-    $('tabKanban').onclick=function(){ if(currentTopNav==='archive') switchTopNav('dash'); showTab('kanban'); };
-    $('tabLib').onclick=function(){ if(currentTopNav==='archive') switchTopNav('dash'); showTab('lib'); };
+    $('btnAdd').onclick=function(){ resetForm(); $('editCard').style.display=''; try{ $('f_name').focus(); }catch(e){} };
 
     // 项目库 CRUD 绑定
     buildPicker('');
     $('f_costRate').oninput=applyCostRateLib;
     $('f_amount').oninput=function(){ if($('f_costRate').value!=='') applyCostRateLib(); };
-    renderLibList();
+    render();
     $('saveProj').onclick=onSave;
     $('cancelEdit').onclick=resetForm;
     $('btnExport').onclick=exportJson;
@@ -1691,10 +1647,10 @@ var CUSTOMERS = [
     _dz.addEventListener('drop', function(e){ var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) handleFiles(f); });
     _dz.onclick=function(){ $('fileUpload').click(); };
     if(typeof pdfjsLib!=='undefined' && pdfjsLib.GlobalWorkerOptions) pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
-    $('selAll').onchange=function(){ var v=this.checked; $('libTable').querySelectorAll('.row-chk').forEach(function(cb){ cb.checked=v; }); };
+    // libTable removed; bulk archive/delete now use the unified selection
 
     // 归档库（历史项目库）：分段切换 + 批量操作 + 全选联动
-    $('segActive').onclick=function(){ switchLib('active'); };
+    $('segActive').onclick=function(){ switchTopNav('dash'); };
     $('segArchive').onclick=function(){ switchLib('archive'); };
     $('btnArchive').onclick=archiveSel;
     $('btnRestore').onclick=restoreSel;
@@ -1717,16 +1673,20 @@ var CUSTOMERS = [
     document.addEventListener('click', function(e){
       var u=e.target.closest && e.target.closest('[data-unmerge]');
       if(u){ e.preventDefault(); doUnmerge(u.getAttribute('data-unmerge')); return; }
+      var d=e.target.closest('[data-del]');
+      if(d){ e.preventDefault(); deleteProj(d.getAttribute('data-del')); return; }
+      var ar=e.target.closest('[data-arch]');
+      if(ar){ e.preventDefault(); archiveOne(ar.getAttribute('data-arch')); return; }
       var a=e.target.closest('[data-edit]');
-      if(a){ e.preventDefault(); showTab('lib'); editProj(a.getAttribute('data-edit')); }
+      if(a){ e.preventDefault(); editProj(a.getAttribute('data-edit')); }
     });
 
-    window.addEventListener('focus', function(){ if($('viewKanban').style.display!=='none') render(); else renderLibList(); });
-    document.addEventListener('visibilitychange', function(){ if(!document.hidden){ if($('viewKanban').style.display!=='none') render(); else renderLibList(); } });
+    window.addEventListener('focus', function(){ if(currentTopNav==='dash') render(); else renderArchiveList(); });
+    document.addEventListener('visibilitychange', function(){ if(!document.hidden){ if(currentTopNav==='dash') render(); else renderArchiveList(); } });
 
     // 默认：看板（或按 hash 打开库 / 历史项目库）
     if(location.hash==='#archive'){ switchTopNav('archive'); }
-    else { showTab('kanban'); }
+    else { switchTopNav('dash'); }
     updateLibCounts();
   }
 

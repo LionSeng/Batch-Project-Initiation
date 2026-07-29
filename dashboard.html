@@ -37,6 +37,15 @@
                border-radius:7px; padding:8px 14px; cursor:pointer; font-size:13px; white-space:nowrap; }
   .theme-btn:hover { background:var(--accent-soft); }
 
+  .sync-pill { display:inline-flex; align-items:center; gap:6px; font-size:13px; padding:8px 14px;
+               border-radius:999px; cursor:pointer; user-select:none; white-space:nowrap;
+               border:1px solid var(--border); background:var(--card); color:var(--text);
+               transition:filter .15s, background-color .25s, color .25s, border-color .25s; }
+  .sync-pill.off { background:rgba(255,170,0,0.14); color:#b8860b; border-color:rgba(255,170,0,0.45); }
+  .sync-pill.on  { background:rgba(40,180,120,0.16); color:#1f9d63; border-color:rgba(40,180,120,0.45); }
+  .sync-pill:hover { filter:brightness(1.06); }
+  .sync-pill:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
   .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:16px; }
   .metric { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px 18px; box-shadow:var(--shadow); transition:background-color .25s; }
   .metric .m-label { font-size:12px; color:var(--muted); }
@@ -316,9 +325,10 @@
     <div class="h-row">
       <div>
         <h1>立项总览</h1>
-        <p>把「项目库」与您提供的原始资料（采购订单 / 邮件 / 外汇入账）合并成一张可随时查看的看板，并在同一页面维护待立项项目。数据存于本机浏览器，改一处、处处同步。</p>
+        <p>把「项目库」与您提供的原始资料（采购订单 / 邮件 / 外汇入账）合并成一张可随时查看的看板，并在同一页面维护待立项项目。改动会自动存盘；点右上角「☁ 未连接」连接一个 JSON 同步文件（建议放到百度网盘/微盘同步文件夹），即可换浏览器、换电脑也不丢，且无需每次手动导出。</p>
       </div>
       <button class="theme-btn" id="themeBtn" type="button">🖥 跟随系统</button>
+      <span id="syncPill" class="sync-pill off" role="button" tabindex="0">☁ 未连接 · 点此锁定数据</span>
     </div>
   </header>
 
@@ -722,14 +732,33 @@ var CUSTOMERS = [
   function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
   function escAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function load(){ try{ var s=localStorage.getItem(LIB_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
-  function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); scheduleSyncWrite(); return true; }catch(e){ return false; } }
+  function _lsHas(k){ try{ return localStorage.getItem(k)!==null; }catch(e){ return false; } }
+  function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); mirrorLocal(); scheduleSyncWrite(); return true; }catch(e){ return false; } }
   function uid(){ return 'p_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
+
+  /* ===== 浏览器内第二份备份：IndexedDB 镜像 =====
+     即便 localStorage 被清，同源浏览器内仍可从这里自动恢复（不跨浏览器，
+     跨浏览器/电脑请用上方「同步文件」放到百度网盘/微盘同步文件夹）。 */
+  var LOCAL_CACHE_KEY='bpi_local_cache';
+  function mirrorLocal(){
+    try{ idbPut(LOCAL_CACHE_KEY, { library:load(), archive:loadArchive(), savedAt:Date.now() }).catch(function(){}); }catch(e){}
+  }
+  function restoreFromLocal(){
+    return idbGet(LOCAL_CACHE_KEY).then(function(c){
+      if(!c || (!((c.library&&c.library.length)||(c.archive&&c.archive.length)))) return false;
+      if(c.library&&c.library.length) save(c.library);
+      if(c.archive&&c.archive.length) saveArchive(c.archive);
+      renderArchiveList(); updateLibCounts(); render();
+      setStatus('已从本浏览器本地缓存恢复 '+((c.library||[]).length)+' 个进行中、'+((c.archive||[]).length)+' 个归档（同源浏览器内的自动备份）。', false);
+      return true;
+    }).catch(function(){ return false; });
+  }
 
   /* ===== 归档库（历史项目库） ===== */
   var ARCHIVE_KEY='bpi_archive_v1';
   var libView='active';  // 'active' | 'archive'
   function loadArchive(){ try{ var s=localStorage.getItem(ARCHIVE_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
-  function saveArchive(arr){ try{ localStorage.setItem(ARCHIVE_KEY,JSON.stringify(arr)); scheduleSyncWrite(); return true; }catch(e){ return false; } }
+  function saveArchive(arr){ try{ localStorage.setItem(ARCHIVE_KEY,JSON.stringify(arr)); mirrorLocal(); scheduleSyncWrite(); return true; }catch(e){ return false; } }
   function updateLibCounts(){
     var n=load().length, m=loadArchive().length;
     if($('cntActive')) $('cntActive').textContent=n;
@@ -1212,13 +1241,21 @@ var CUSTOMERS = [
     var opts={ suggestedName:'批量立项项目库.json', types:[{ description:'JSON', accept:{ 'application/json':['.json'] } }] };
     window.showSaveFilePicker(opts).then(function(handle){
       return idbPut(SYNC_HANDLE_KEY, handle).then(function(){ return writeSyncFile(); }).then(function(){
+        refreshSyncPill();
         setSyncStatus('已连接同步文件：'+(handle.name||'')+'。之后改动会自动写入；把它放在百度网盘/企业微信微盘同步文件夹即可多设备同步。', false);
       });
     }).catch(function(e){ if(e&&e.name==='AbortError') return; setSyncStatus('连接失败：'+(e&&e.message?e.message:e), true); });
   }
   function pickSyncFile(){
     if(!window.showOpenFilePicker){ $('fileImport').click(); return; }
-    window.showOpenFilePicker({ types:[{ description:'JSON', accept:{ 'application/json':['.json'] } }] }).then(function(hs){ if(hs&&hs[0]) return hs[0].getFile().then(applySyncFile); }).catch(function(e){ if(e&&e.name==='AbortError') return; setSyncStatus('读取失败：'+(e&&e.message?e.message:e), true); });
+    window.showOpenFilePicker({ types:[{ description:'JSON', accept:{ 'application/json':['.json'] } }] }).then(function(hs){
+      if(hs&&hs[0]){
+        return hs[0].getFile().then(function(file){
+          applySyncFile(file);
+          return idbPut(SYNC_HANDLE_KEY, hs[0]).then(function(){ refreshSyncPill(); }); // 持久化句柄，之后改动能自动写回
+        });
+      }
+    }).catch(function(e){ if(e&&e.name==='AbortError') return; setSyncStatus('读取失败：'+(e&&e.message?e.message:e), true); });
   }
   function applySyncFile(file){
     var reader=new FileReader();
@@ -1241,7 +1278,25 @@ var CUSTOMERS = [
     };
     reader.readAsText(file);
   }
-  function openSync(){ $('syncMask').style.display='flex'; setSyncStatus('', false); }
+  function openSync(){ $('syncMask').style.display='flex'; refreshSyncPill(); setSyncStatus('', false); }
+  /* 顶部胶囊：显示同步文件连接状态；打开页面时自动重连已连接的文件 */
+  function refreshSyncPill(){
+    var pill=$('syncPill'); if(!pill) return;
+    idbGet(SYNC_HANDLE_KEY).then(function(h){
+      if(h && h.name){
+        pill.className='sync-pill on';
+        pill.title='已连接同步文件：'+h.name+'（改动自动写入；建议放到百度网盘/微盘同步文件夹即可多设备同步）';
+        pill.firstChild.nodeValue='☁ 已连接：'+h.name;
+      } else {
+        pill.className='sync-pill off';
+        pill.title='未连接同步文件。点此连接一个 JSON 文件（建议放到百度网盘/微盘同步文件夹），之后改动自动保存、换浏览器/电脑也在。';
+        pill.firstChild.nodeValue='☁ 未连接 · 点此锁定数据';
+      }
+    }).catch(function(){
+      pill.className='sync-pill off';
+      pill.firstChild.nodeValue='☁ 未连接 · 点此锁定数据';
+    });
+  }
 
   /* ===== 上传文件识别（PDF / EML / Excel / CSV / TXT） ===== */
   function matchClient(str){
@@ -1763,6 +1818,10 @@ var CUSTOMERS = [
     $('btnImport2').onclick=function(){ $('fileImport').click(); };
     $('syncClose').onclick=function(){ $('syncMask').style.display='none'; };
     $('syncMask').addEventListener('click', function(e){ if(e.target===$('syncMask')) $('syncMask').style.display='none'; });
+    // 顶部同步胶囊：点开同步面板（连接 / 选择文件 / 查看状态）
+    $('syncPill').onclick=openSync;
+    $('syncPill').addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openSync(); } });
+    refreshSyncPill();
 
     // 看板卡片/列表「编辑」→ 切到库 tab 并打开编辑；「解散」→ 还原合并项
     document.addEventListener('click', function(e){
@@ -1778,6 +1837,11 @@ var CUSTOMERS = [
 
     window.addEventListener('focus', function(){ if(currentTopNav==='dash') render(); else renderArchiveList(); });
     document.addEventListener('visibilitychange', function(){ if(!document.hidden){ if(currentTopNav==='dash') render(); else renderArchiveList(); } });
+
+    // 同源浏览器内「防丢」：若 localStorage 被清空但 IndexedDB 缓存还在，自动恢复
+    if(!_lsHas(LIB_KEY) && !_lsHas(ARCHIVE_KEY)){
+      restoreFromLocal();
+    }
 
     // 默认：看板（或按 hash 打开库 / 历史项目库）
     if(location.hash==='#archive'){ switchTopNav('archive'); }

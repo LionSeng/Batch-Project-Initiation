@@ -1145,23 +1145,28 @@ var CUSTOMERS = [
     reader.onload=function(){
       try{
         var parsed=JSON.parse(reader.result);
-        var incoming=Array.isArray(parsed)?parsed:(parsed.library||[]);
-        if(!Array.isArray(incoming)) throw new Error('JSON 格式不正确');
-        var arr=load(); var existed={}; arr.forEach(function(x){ existed[x.id]=true; });
-        var added=0, merged=0;
-        incoming.forEach(function(it){
-          if(!it || typeof it!=='object') return;
-          if(!it.id) it.id=uid();
-          if(existed[it.id]) merged++; else { arr.push(it); existed[it.id]=true; added++; }
-        });
-        save(arr);
-        if(parsed && Array.isArray(parsed.archive)){
-          var a2=loadArchive(); var ax={}; a2.forEach(function(x){ ax[x.id]=true; }); var aAdd=0;
-          parsed.archive.forEach(function(it){ if(!it||typeof it!=='object') return; if(!it.id) it.id=uid(); if(!ax[it.id]){ a2.push(it); ax[it.id]=true; aAdd++; } });
-          saveArchive(a2);
+        var isLegacy=Array.isArray(parsed);                 // 旧格式：整文件就是一个数组
+        var lib=isLegacy?parsed:(parsed.library||[]);
+        var arc=isLegacy?[]:(parsed.archive||[]);
+        if(!Array.isArray(lib)) throw new Error('JSON 格式不正确');
+        // 恢复备份 = 用备份【覆盖】当前数据，而不是按 id 合并。
+        // 否则重新导入同一份备份不会回滚改动，看起来像“没生效”。
+        var curLib=load().length, curArc=loadArchive().length;
+        if(!window.confirm(
+          '恢复备份将用该文件【覆盖】当前数据：\n\n'
+          + '  当前：进行中 '+curLib+' 个、归档 '+curArc+' 个\n'
+          + '  备份：进行中 '+lib.length+' 个、归档 '+arc.length+' 个\n\n'
+          + '确定继续？取消则当前数据保持不变。')){
+          setStatus('已取消恢复，当前数据进行中 '+curLib+' 个、归档 '+curArc+' 个，未改动。', false);
+          return;
         }
+        // 归一化：进行中不含 archivedAt；归档必须有 archivedAt
+        var cleanLib=lib.map(function(it){ var c=Object.assign({}, it); delete c.archivedAt; if(!c.id) c.id=uid(); return c; });
+        var cleanArc=arc.map(function(it){ var c=Object.assign({}, it); if(!c.archivedAt) c.archivedAt=Date.now(); if(!c.id) c.id=uid(); return c; });
+        save(cleanLib); saveArchive(cleanArc);
+        selected={};
         renderArchiveList(); updateLibCounts(); render();
-        setStatus('导入完成：进行中 +'+added+'（跳过 '+merged+'）'+(parsed&&Array.isArray(parsed.archive)?'；归档已合并。':''), false);
+        setStatus('已从备份恢复：进行中 '+cleanLib.length+' 个、归档 '+cleanArc.length+' 个。', false);
       }catch(e){ setStatus('导入失败：'+(e&&e.message?e.message:e), true); }
     };
     reader.readAsText(file);

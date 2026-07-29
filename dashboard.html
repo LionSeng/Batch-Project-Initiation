@@ -54,6 +54,23 @@
   .tab-btn:not(.active):hover { background:var(--accent-soft); }
 
   .board-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:18px; }
+  .board-bar + .board-bar { margin-top:10px; }
+  .dd { position:relative; display:inline-block; }
+  .dd-trigger { display:inline-flex; align-items:center; gap:4px; }
+  .dd-trigger .caret { font-size:10px; opacity:.75; margin-left:2px; }
+  .dd-menu { position:absolute; top:calc(100% + 6px); left:0; min-width:200px;
+             background:var(--card); border:1px solid var(--border); border-radius:10px;
+             box-shadow:0 10px 28px rgba(0,0,0,.14); padding:6px; z-index:100; display:none; }
+  .dd.open .dd-menu { display:block; }
+  .dd-item { display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+             border:none; background:none; padding:9px 12px; font-size:13px;
+             border-radius:7px; cursor:pointer; color:var(--text); font-weight:500; }
+  .dd-item:hover:not(:disabled) { background:var(--accent-soft); }
+  .dd-item:disabled { color:var(--muted); cursor:not-allowed; opacity:.55; }
+  .dd-item.primary { color:var(--accent); font-weight:600; }
+  .dd-item.danger { color:#c0392b; }
+  .dd-item.danger:hover:not(:disabled) { background:#fce8e6; }
+  .dd-sep { height:1px; background:var(--border); margin:4px 6px; }
   .seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
   .seg-btn { border:none; background:var(--card); color:var(--text); padding:8px 16px; cursor:pointer; font-size:14px; }
   .seg-btn.active { background:var(--accent); color:#fff; }
@@ -316,6 +333,7 @@
 
   <!-- ===== 统一工作台：看板总览 + 项目库维护 合并为一页 ===== -->
   <div id="viewMain">
+    <!-- 行 1：视图/筛选 -->
     <div class="board-bar">
       <div class="seg">
         <button class="seg-btn" id="vKanban" type="button">看板</button>
@@ -329,19 +347,44 @@
       <label class="sel-all"><input type="checkbox" id="selView"> 全选当前</label>
       <span class="spacer"></span>
       <span class="sel-info" id="selInfo">已选 0 项</span>
-      <button class="act b-ghost" id="btnAdd" type="button">➕ 添加项目</button>
-      <button class="act b-accent" id="mergeSel" type="button" disabled>合并选中项</button>
-      <button class="act b-ghost" id="btnArchive" type="button">📦 归档选中</button>
-      <button class="act b-ghost" id="btnDelSel" type="button">🗑 删除选中</button>
-      <button class="act b-ghost" id="btnUpload" type="button">📎 上传识别</button>
-      <button class="act b-cloud" id="btnSync" type="button">🗂 同步</button>
-      <button class="act b-ghost" id="btnExport" type="button">导出JSON</button>
-      <button class="act b-ghost" id="btnImport" type="button">导入JSON</button>
-      <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
-      <button class="act b-primary" id="goGen" type="button">去批量立项 (0)</button>
-      <button class="act b-ghost" id="reloadSeed" type="button">重新载入整理数据</button>
-      <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
     </div>
+
+    <!-- 行 2：主操作（3 个一级下拉） -->
+    <div class="board-bar">
+      <div class="dd" id="ddAdd">
+        <button class="act b-ghost dd-trigger" type="button">➕ 添加 <span class="caret">▾</span></button>
+        <div class="dd-menu" role="menu">
+          <button class="dd-item" id="m_addBlank" type="button" role="menuitem">📝 空表单添加项目</button>
+          <button class="dd-item" id="m_upload" type="button" role="menuitem">📎 上传文件识别</button>
+        </div>
+      </div>
+
+      <div class="dd" id="ddSel">
+        <button class="act b-ghost dd-trigger" id="ddSelTrigger" type="button">✦ 已选 0 项 <span class="caret">▾</span></button>
+        <div class="dd-menu" role="menu">
+          <button class="dd-item primary" id="m_goGen" type="button" role="menuitem" disabled>🚀 去批量立项</button>
+          <button class="dd-item" id="m_merge" type="button" role="menuitem" disabled>🔀 合并选中</button>
+          <div class="dd-sep"></div>
+          <button class="dd-item" id="m_archive" type="button" role="menuitem">📦 归档选中</button>
+          <button class="dd-item danger" id="m_delSel" type="button" role="menuitem">🗑 删除选中</button>
+        </div>
+      </div>
+
+      <div class="dd" id="ddData">
+        <button class="act b-ghost dd-trigger" type="button">🗂 数据 <span class="caret">▾</span></button>
+        <div class="dd-menu" role="menu">
+          <button class="dd-item" id="m_sync" type="button" role="menuitem">☁️ 多设备同步</button>
+          <div class="dd-sep"></div>
+          <button class="dd-item" id="m_export" type="button" role="menuitem">📤 导出 JSON 备份</button>
+          <button class="dd-item" id="m_import" type="button" role="menuitem">📥 导入 JSON 备份</button>
+          <div class="dd-sep"></div>
+          <button class="dd-item" id="m_reload" type="button" role="menuitem">↻ 重新载入整理数据</button>
+        </div>
+      </div>
+    </div>
+
+    <input type="file" id="fileImport" accept="application/json,.json" style="display:none;">
+    <input type="file" id="fileUpload" accept=".pdf,.eml,.msg,.xlsx,.xls,.csv,.txt,.json" multiple style="display:none;">
 
     <div class="kanban" id="board"></div>
     <table class="tbl" id="tbl" style="display:none;">
@@ -832,8 +875,9 @@ var CUSTOMERS = [
     var ids=Object.keys(selected);
     var n=ids.length;
     var info=$('selInfo'); if(info) info.textContent='已选 '+n+' 项';
-    var btn=$('goGen'); if(btn) btn.textContent='去批量立项 ('+n+')';
-    var mb=$('mergeSel'); if(mb) mb.disabled=(n<2);
+    var trig=$('ddSelTrigger'); if(trig){ trig.textContent='✦ 已选 '+n+' 项 '; var c=document.createElement('span'); c.className='caret'; c.textContent='▾'; trig.appendChild(c); }
+    var gg=$('m_goGen'); if(gg) gg.disabled=(n===0);
+    var mb=$('m_merge'); if(mb) mb.disabled=(n<2);
     var sv=$('selView');
     if(sv){ var all=currentIds.length>0 && currentIds.every(function(id){ return !!selected[id]; }); sv.checked=all; }
 
@@ -1373,7 +1417,7 @@ var CUSTOMERS = [
     };
     reader.readAsArrayBuffer(file);
   }
-  function setUploading(b){ var b2=$('btnUpload'); if(!b2) return; b2.disabled=!!b; b2.textContent=b?'解析中…':'📎 上传文件识别'; }
+  function setUploading(b){ var b2=$('m_upload'); if(!b2) return; b2.disabled=!!b; b2.textContent=b?'解析中…':'📎 上传文件识别'; }
   function handleFiles(files){
     files=Array.prototype.slice.call(files||[]);
     if(!files.length) return;
@@ -1578,25 +1622,43 @@ var CUSTOMERS = [
       if(added) setStatus('已自动载入 '+added+' 条整理好的储备项目（来自您提供的 PO / 邮件 / 外汇 资料）。可到「项目库」增删改。', false);
     }
 
-    // 看板视图/分组/搜索/重载
+    // 看板视图/分组/搜索
     $('vKanban').onclick=function(){ viewMode='kanban'; syncBtns(); render(); };
     $('vList').onclick=function(){ viewMode='list'; syncBtns(); render(); };
     $('gSource').onclick=function(){ groupMode='source'; syncBtns(); render(); };
     $('gClient').onclick=function(){ groupMode='client'; syncBtns(); render(); };
     $('search').oninput=function(){ keyword=this.value; render(); };
-    $('reloadSeed').onclick=function(){
-      var added=mergeSeed(); render();
-      setStatus(added?('已合并整理数据：新增 '+added+' 项（相同 ID 已跳过）'):'整理数据已全部存在，无新增。', false);
-    };
-    // toLib removed (no more separate project-library tab)
 
-    // 多选 → 批量立项
-    $('selView').onchange=function(){
-      var v=this.checked;
-      currentIds.forEach(function(id){ if(v) selected[id]=true; else delete selected[id]; });
-      render();
+    // ===== 通用下拉开关 =====
+    document.addEventListener('click', function(e){
+      var inDd=e.target.closest('.dd');
+      document.querySelectorAll('.dd.open').forEach(function(d){ if(d!==inDd) d.classList.remove('open'); });
+      var trig=e.target.closest('.dd-trigger');
+      if(trig){
+        var dd=trig.closest('.dd');
+        var willOpen=!dd.classList.contains('open');
+        document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+        if(willOpen) dd.classList.add('open');
+        e.stopPropagation();
+      }
+    });
+    document.addEventListener('keydown', function(e){
+      if(e.key==='Escape') document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+    });
+
+    // ===== 下拉菜单项：添加 ▾ =====
+    $('m_addBlank').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      resetForm(); $('editCard').style.display=''; try{ $('f_name').focus(); }catch(e){}
     };
-    $('goGen').onclick=function(){
+    $('m_upload').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      $('fileUpload').click();
+    };
+
+    // ===== 下拉菜单项：已选 N 项 ▾ =====
+    $('m_goGen').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
       var ids=Object.keys(selected);
       if(ids.length){
         var arr=load();
@@ -1609,7 +1671,44 @@ var CUSTOMERS = [
       setStatus('正在打开批量立项生成器，并预填你选择的 '+ids.length+' 个项目…', false);
       setTimeout(function(){ window.location.href='index.html'; }, 150);
     };
-    $('mergeSel').onclick=openMerge;
+    $('m_merge').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      openMerge();
+    };
+    $('m_archive').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      archiveSel();
+    };
+    $('m_delSel').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      delSel();
+    };
+
+    // ===== 下拉菜单项：数据 ▾ =====
+    $('m_sync').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      openSync();
+    };
+    $('m_export').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      exportJson();
+    };
+    $('m_import').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      $('fileImport').click();
+    };
+    $('m_reload').onclick=function(){
+      document.querySelectorAll('.dd.open').forEach(function(d){ d.classList.remove('open'); });
+      var added=mergeSeed(); render();
+      setStatus(added?('已合并整理数据：新增 '+added+' 项（相同 ID 已跳过）'):'整理数据已全部存在，无新增。', false);
+    };
+
+    // 多选 → 批量立项
+    $('selView').onchange=function(){
+      var v=this.checked;
+      currentIds.forEach(function(id){ if(v) selected[id]=true; else delete selected[id]; });
+      render();
+    };
     $('mergeOk').onclick=doMerge;
     $('mergeCancel').onclick=closeMerge;
     $('mergeMask').onclick=function(e){ if(e.target===this) closeMerge(); };
@@ -1621,9 +1720,6 @@ var CUSTOMERS = [
       updateSelInfo();
     });
 
-    // tab 按钮
-    $('btnAdd').onclick=function(){ resetForm(); $('editCard').style.display=''; try{ $('f_name').focus(); }catch(e){} };
-
     // 项目库 CRUD 绑定
     buildPicker('');
     $('f_costRate').oninput=applyCostRateLib;
@@ -1631,12 +1727,9 @@ var CUSTOMERS = [
     render();
     $('saveProj').onclick=onSave;
     $('cancelEdit').onclick=resetForm;
-    $('btnExport').onclick=exportJson;
-    $('btnImport').onclick=function(){ $('fileImport').click(); };
     $('fileImport').onchange=function(){ if(this.files&&this.files[0]) importJson(this.files[0]); this.value=''; };
 
     // 上传文件识别（PDF / EML / Excel / CSV / TXT）
-    $('btnUpload').onclick=function(){ $('fileUpload').click(); };
     $('fileUpload').onchange=function(){ if(this.files&&this.files.length) handleFiles(this.files); this.value=''; };
     $('recogCancel').onclick=closeRecognition;
     $('recogAdd').onclick=confirmRecognition;
@@ -1652,16 +1745,13 @@ var CUSTOMERS = [
     // 归档库（历史项目库）：分段切换 + 批量操作 + 全选联动
     $('segActive').onclick=function(){ switchTopNav('dash'); };
     $('segArchive').onclick=function(){ switchLib('archive'); };
-    $('btnArchive').onclick=archiveSel;
     $('btnRestore').onclick=restoreSel;
-    $('btnDelSel').onclick=delSel;
     $('btnDelArch').onclick=delArchiveSel;
     $('selAllArch').onchange=function(){ var v=this.checked; $('archTable').querySelectorAll('.arch-chk').forEach(function(cb){ cb.checked=v; }); };
     $('navArchive').onclick=function(e){ e.preventDefault(); switchTopNav('archive'); };
     $('navDash').onclick=function(e){ e.preventDefault(); switchTopNav('dash'); };
 
     // 本地同步（不依赖 GitHub / 不联网 / 不上传服务器）
-    $('btnSync').onclick=openSync;
     $('syncConnect').onclick=connectSyncFile;
     $('syncPick').onclick=pickSyncFile;
     $('btnExport2').onclick=exportJson;

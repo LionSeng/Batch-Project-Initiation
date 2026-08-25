@@ -540,6 +540,7 @@
 <!-- 文件识别依赖：SheetJS(Excel/CSV) + pdf.js(PDF 文字提取)，离线可用 -->
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/pdf.min.js"></script>
+<script src="sync.js"></script>
 
 <!-- 上传文件识别：识别结果确认弹窗 -->
 <div id="recogMask" class="recog-mask" style="display:none;">
@@ -733,7 +734,7 @@ var CUSTOMERS = [
   function escAttr(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function load(){ try{ var s=localStorage.getItem(LIB_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
   function _lsHas(k){ try{ return localStorage.getItem(k)!==null; }catch(e){ return false; } }
-  function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); mirrorLocal(); scheduleSyncWrite(); return true; }catch(e){ return false; } }
+  function save(arr){ try{ localStorage.setItem(LIB_KEY,JSON.stringify(arr)); mirrorLocal(); scheduleSyncWrite(); if(window.BPISync && BPISync.isCloud()) BPISync.pushLibrary(); return true; }catch(e){ return false; } }
   function uid(){ return 'p_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7); }
 
   /* ===== 浏览器内第二份备份：IndexedDB 镜像 =====
@@ -758,7 +759,7 @@ var CUSTOMERS = [
   var ARCHIVE_KEY='bpi_archive_v1';
   var libView='active';  // 'active' | 'archive'
   function loadArchive(){ try{ var s=localStorage.getItem(ARCHIVE_KEY); return s?JSON.parse(s):[]; }catch(e){ return []; } }
-  function saveArchive(arr){ try{ localStorage.setItem(ARCHIVE_KEY,JSON.stringify(arr)); mirrorLocal(); scheduleSyncWrite(); return true; }catch(e){ return false; } }
+  function saveArchive(arr){ try{ localStorage.setItem(ARCHIVE_KEY,JSON.stringify(arr)); mirrorLocal(); scheduleSyncWrite(); if(window.BPISync && BPISync.isCloud()) BPISync.pushArchive(); return true; }catch(e){ return false; } }
   function updateLibCounts(){
     var n=load().length, m=loadArchive().length;
     if($('cntActive')) $('cntActive').textContent=n;
@@ -812,7 +813,7 @@ var CUSTOMERS = [
     if(!ids.length){ setStatus('请先勾选要归档的项目（用每行左侧的复选框）。', true); return; }
     var lib=load(), arch=loadArchive(), keep=[], moved=0;
     var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
-    lib.forEach(function(x){ if(idSet[x.id]){ x.archivedAt=Date.now(); arch.push(x); moved++; } else keep.push(x); });
+    lib.forEach(function(x){ if(idSet[x.id]){ delete x._rid; x.archivedAt=Date.now(); arch.push(x); moved++; } else keep.push(x); });
     save(keep); saveArchive(arch);
     ids.forEach(function(id){ delete selected[id]; });
     render(); renderArchiveList(); updateLibCounts();
@@ -822,7 +823,7 @@ var CUSTOMERS = [
     var lib=load(), arch=loadArchive(), idx=-1;
     for(var i=0;i<lib.length;i++){ if(lib[i].id===id){ idx=i; break; } }
     if(idx<0) return;
-    var p=lib[idx]; p.archivedAt=Date.now(); arch.push(p); lib.splice(idx,1);
+    var p=lib[idx]; delete p._rid; p.archivedAt=Date.now(); arch.push(p); lib.splice(idx,1);
     save(lib); saveArchive(arch); render(); renderArchiveList(); updateLibCounts();
     setStatus('已归档 1 个项目到历史项目库。', false);
   }
@@ -831,7 +832,7 @@ var CUSTOMERS = [
     if(!ids.length){ setStatus('请先勾选要恢复的项目。', true); return; }
     var arch=loadArchive(), lib=load(), keep=[], moved=0;
     var idSet={}; ids.forEach(function(id){ idSet[id]=true; });
-    arch.forEach(function(x){ if(idSet[x.id]){ delete x.archivedAt; lib.push(x); moved++; } else keep.push(x); });
+    arch.forEach(function(x){ if(idSet[x.id]){ delete x._rid; delete x.archivedAt; lib.push(x); moved++; } else keep.push(x); });
     save(lib); saveArchive(keep);
     renderArchiveList(); updateLibCounts(); render();
     if($('selAllArch')) $('selAllArch').checked=false;
@@ -841,7 +842,7 @@ var CUSTOMERS = [
     var arch=loadArchive(), lib=load();
     var idx=-1; for(var i=0;i<arch.length;i++){ if(arch[i].id===id){ idx=i; break; } }
     if(idx<0) return;
-    var p=arch[idx]; delete p.archivedAt; lib.push(p);
+    var p=arch[idx]; delete p._rid; delete p.archivedAt; lib.push(p);
     arch.splice(idx,1);
     save(lib); saveArchive(arch);
     renderArchiveList(); updateLibCounts(); render();
@@ -1305,7 +1306,7 @@ var CUSTOMERS = [
     if(!s) return null;
     var best=null, bestScore=0;
     CUSTOMERS.forEach(function(c){
-      var name=(c.name||'').toLowerCase(), short=(c.short||'')||'', code=(c.code||'').toLowerCase();
+      var name=(c.name||'').toLowerCase(), short=(c.short||'').toLowerCase(), code=(c.code||'').toLowerCase();
       var score=0;
       if(name && s.indexOf(name)>=0) score=Math.max(score, name.length);
       if(short && s.indexOf(short)>=0) score=Math.max(score, short.length+1);
@@ -1419,44 +1420,67 @@ var CUSTOMERS = [
       try{
         var wb=XLSX.read(reader.result,{type:'array'});
         var sheets=wb.SheetNames.map(function(name){
-          var ws=wb.Sheets[name];
-          var rows=XLSX.utils.sheet_to_json(ws,{defval:''});
-          return {name:name, rows:rows};
+          return {name:name, ws:wb.Sheets[name]};
         });
         done(null, sheets);
       }catch(e){ done(e); }
     };
     reader.readAsArrayBuffer(file);
   }
-  function rowsToCandidates(rows){
-    if(!rows || !rows.length) return [];
-    var first=rows[0];
-    var keys=Object.keys(first);
-    function pick(aliases){
-      for(var k=0;k<keys.length;k++){ var kl=keys[k].toLowerCase(); for(var a=0;a<aliases.length;a++){ if(kl.indexOf(aliases[a])>=0) return keys[k]; } }
-      return '';
+  function excelDetectHeader(matrix){
+    var KW={ name:['项目','名称','标题','subject','project','name'], client:['客户','委托','承接','甲方','乙方','付款人','收款人','收款对象','customer','client'], amt:['金额','总额','合计','决算','预算','total','amount','price','合同'], start:['开始','起始','start'], end:['结束','截至','end'], code:['编号','code','项目编号'] };
+    var best=-1, bestHits=0;
+    for(var r=0;r<Math.min(matrix.length,10);r++){
+      var row=matrix[r].map(function(c){ return String(c==null?'':c).toLowerCase(); });
+      var hits=0;
+      row.forEach(function(t){ Object.keys(KW).forEach(function(k){ KW[k].forEach(function(a){ if(t.indexOf(a)>=0) hits++; }); }); });
+      if(hits>bestHits){ bestHits=hits; best=r; }
     }
-    var kName=pick(['项目','名称','project','name','subject','标题']);
-    var kClient=pick(['客户','customer','client','甲方']);
-    var kAmt=pick(['金额','总额','total','amount','price','费用','合同']);
-    var kStart=pick(['开始','起','start','起始']);
-    var kEnd=pick(['结束','止','end','截至']);
-    var kCode=pick(['编号','code','项目编号']);
-    return rows.map(function(r){
-      var name=kName?r[kName]:'';
-      var clientText=kClient?(r[kClient]||''):'';
-      var c=clientText?matchClient(String(clientText)):null;
-      var amt=kAmt?cleanNum(r[kAmt]):'';
-      return {
-        name: name!=null?String(name):'',
-        clientCode: c?c.code:'', clientShort: c?c.short:'', clientName: c?c.name:'',
-        amount: amt,
-        startDate: kStart?(r[kStart]||''):'',
-        endDate: kEnd?(r[kEnd]||''):'',
-        projCode: kCode?(r[kCode]||''):'',
-        _src:'Excel行'
-      };
-    }).filter(function(c){ return (c.name && c.name.length) || c.clientCode || (c.amount && c.amount.length); });
+    return best;
+  }
+  function excelColMap(header){
+    var m={};
+    header.forEach(function(h,i){
+      var hl=String(h==null?'':h).replace(/\*/g,'').toLowerCase();
+      if(m.client==null && /客户|委托|承接|甲方|乙方|付款人|收款人|收款对象|customer|client/.test(hl)){ m.client=i; return; }
+      if(m.name==null && /项目|立项|标题|subject|project|name/.test(hl) && !/付款人|收款人|费用|客户|编号|甲方|乙方/.test(hl)){ m.name=i; return; }
+      if(m.amt==null && /金额|总额|决算|预算|total|amount|price|合同/.test(hl) && !/费用名称|费率|单价/.test(hl)){ m.amt=i; return; }
+      if(m.start==null && /开始|起始|start/.test(hl)){ m.start=i; return; }
+      if(m.end==null && /结束|截至|end/.test(hl)){ m.end=i; return; }
+      if(m.code==null && /编号|项目编号|code/.test(hl) && !/序号/.test(hl)){ m.code=i; return; }
+    });
+    return m;
+  }
+  function rowsToCandidates(ws, sheetName){
+    if(!ws || !ws['!ref']) return [];
+    var matrix=XLSX.utils.sheet_to_json(ws,{header:1, defval:''});
+    if(!matrix.length) return [];
+    var hr=excelDetectHeader(matrix);
+    if(hr<0) return [];
+    var m=excelColMap(matrix[hr]);
+    var out=[];
+    for(var r=hr+1;r<matrix.length;r++){
+      var row=matrix[r];
+      if(!row || !row.length) continue;
+      var name=m.name!=null?String(row[m.name]==null?'':row[m.name]).trim():'';
+      var clientText=m.client!=null?String(row[m.client]==null?'':row[m.client]).trim():'';
+      var amtRaw=m.amt!=null?String(row[m.amt]==null?'':row[m.amt]).trim():'';
+      var rowText=row.map(function(x){return String(x==null?'':x);}).join(' ');
+      if(/合计|总计|小计|sum/i.test(rowText)) continue;
+      if(!name && !clientText && !amtRaw) continue;
+      var c=clientText?matchClient(clientText):null;
+      if(!name && c) name=c.short+' 回款';
+      out.push({
+        name:name,
+        clientCode:c?c.code:'', clientShort:c?c.short:'', clientName:c?c.name:'',
+        amount:cleanNum(amtRaw),
+        startDate:m.start!=null?String(row[m.start]==null?'':row[m.start]):'',
+        endDate:m.end!=null?String(row[m.end]==null?'':row[m.end]):'',
+        projCode:m.code!=null?String(row[m.code]==null?'':row[m.code]):'',
+        _src:'Excel·'+(sheetName||'')
+      });
+    }
+    return out;
   }
   function parsePdfFile(file, done){
     if(typeof pdfjsLib==='undefined'){ done(new Error('PDF 解析库未加载，无法解析 PDF')); return; }
@@ -1491,7 +1515,7 @@ var CUSTOMERS = [
       if(ext==='xlsx'||ext==='xls'||ext==='csv'){
         parseExcelFile(file, function(err, sheets){
           if(err){ setStatus('解析 '+file.name+' 失败：'+(err.message||err), true); }
-          else { sheets.forEach(function(sh){ rowsToCandidates(sh.rows).forEach(function(c){ c._src='Excel·'+sh.name; allCands.push(c); }); }); }
+          else { sheets.forEach(function(sh){ if(/说明|汇总|封面|目录|readme/i.test(sh.name)) return; rowsToCandidates(sh.ws, sh.name).forEach(function(c){ allCands.push(c); }); }); }
           finishOne();
         });
         return;
@@ -1676,6 +1700,10 @@ var CUSTOMERS = [
   function init(){
     applyTheme(localStorage.getItem(THEME_KEY)||'system');
     $('themeBtn').onclick=cycleTheme;
+
+    if(window.BPISync && BPISync.isCloud()){
+      BPISync.pullToLocal().then(function(ok){ if(ok){ try{ render(); renderArchiveList(); updateLibCounts(); }catch(e){} } });
+    }
 
     if(load().length===0){
       var added=mergeSeed();

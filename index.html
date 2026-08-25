@@ -141,6 +141,7 @@
 </style>
 </head>
 <body>
+<script src="sync.js"></script>
 <div class="wrap">
   <nav class="topnav">
     <a href="dashboard.html">📊 立项总览</a>
@@ -1659,6 +1660,7 @@ var CUSTOMERS = [
 
   /* ---------- 初始化 ---------- */
   function init() {
+    if (window.BPISync && BPISync.isCloud()) { BPISync.pullToLocal(); }
     buildGlobalForm();
     var queued = consumeQueue();
     if (queued.length) {

@@ -187,6 +187,9 @@
       <button class="act b-ghost" id="previewBtn" type="button">预览（核对每个项目要写的所有字段）</button>
       <button class="act b-primary" id="gen" type="button">生成并下载</button>
     </div>
+    <div class="toolbar" style="margin-top:6px;">
+      <button class="act b-secondary" id="archiveBtn" type="button" style="display:none;">📥 待归档 <strong id="archN" style="color:#dc2626;font-size:16px;">0</strong> 项 · 归档到「历史项目库」</button>
+    </div>
     <div class="status" id="status"></div>
   </div>
 
@@ -214,6 +217,38 @@
         <button class="act b-primary" id="importDo" type="button">引用选中 (0)</button>
         <button class="act b-ghost" id="importCancel" type="button">取消</button>
         <span class="lib-meta" id="importMeta">项目库共 0 个</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 手动归档：弹窗 -->
+  <div class="modal-mask" id="archiveMask">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>归档到「历史项目库」</h3>
+        <button class="modal-x" id="archiveX" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:8px 0 12px;color:#6b7280;font-size:13px;">下方列出本批已下载文件的项目。勾选要归档的项后点「确认归档」——默认全选，可反选不要归档的项。</p>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead>
+              <tr style="background:#f6f8fa;">
+                <th style="padding:8px;width:34px;text-align:left;"><input type="checkbox" id="archSelectAll" checked></th>
+                <th style="padding:8px;text-align:left;">项目名称</th>
+                <th style="padding:8px;text-align:left;">项目编号</th>
+                <th style="padding:8px;text-align:left;">客户</th>
+                <th style="padding:8px;text-align:right;">金额</th>
+              </tr>
+            </thead>
+            <tbody id="archList"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <label class="cust-box"><input type="checkbox" id="archSelectAllFoot" checked> 全选</label>
+        <button class="act b-primary" id="archConfirmBtn" type="button">确认归档</button>
+        <button class="act b-ghost" id="archCancelBtn" type="button">取消</button>
       </div>
     </div>
   </div>
@@ -1441,11 +1476,14 @@ var CUSTOMERS = [
     setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   }
 
-  /* ---------- 立项完成 → 自动归档到「历史项目库」 ----------
-   * 下载文件成功后调用：把本批项目（含最终确认的项目编号/金额等全部字段）
-   * 写入 bpi_archive_v1 历史归档库；来自项目库的项目同时从「进行中项目库」移除。
-   * 语义与看板「归档」一致（delete _rid + archivedAt）。在线版同步推资料库两张表。 */
+  /* ---------- 「历史项目库」手动归档 ----------
+   * 流程：点「生成并下载」完成后，本批项目仅写入 sessionStorage 待归档队列；
+   * 用户主动点「📥 归档到历史项目库」按钮 → 弹模态确认 → 调用本函数归档。
+   * 入参 items：每项 = {name, projCode, ... + __libId}。
+   * 语义与看板「归档」一致：来自进行中库的 splice 移入归档；delete _rid + archivedAt；
+   * 在线版调 BPISync.pushLibrary + pushArchive 双表同步。 */
   var ARCHIVE_KEY = 'bpi_archive_v1';
+  var PENDING_KEY = 'bpi_pending_archive';
   var ARCH_FIELDS = ['name', 'projCode', 'clientName', 'clientShort', 'clientCode', 'clientNature',
     'startDate', 'endDate', 'amount', 'budget', 'costRate', 'finalAmount', 'p1', 'p2', 'p3', 'p4', 'p5'];
 
@@ -1453,39 +1491,97 @@ var CUSTOMERS = [
   function lsReadArr(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : []; } catch (e) { return []; } }
   function lsWriteArr(key, arr) { try { localStorage.setItem(key, JSON.stringify(arr)); return true; } catch (e) { return false; } }
 
-  function archiveOnDone() {
-    var cards = $('rows').querySelectorAll('.rowcard');
-    if (!cards.length) return 0;
+  function getPending() { try { var s = sessionStorage.getItem(PENDING_KEY); return s ? JSON.parse(s) : []; } catch (e) { return []; } }
+  function setPending(arr) { try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(arr)); } catch (e) {} }
+  function clearPending() { try { sessionStorage.removeItem(PENDING_KEY); } catch (e) {} }
+
+  function archiveOnDone(items) {
+    if (!items || !items.length) return 0;
     var lib = lsReadArr(LIB_KEY);
     var arch = lsReadArr(ARCHIVE_KEY);
     var now = Date.now();
-    cards.forEach(function (card) {
-      var p = {};
-      card.querySelectorAll('[data-f]').forEach(function (inp) { p[inp.getAttribute('data-f')] = (inp.value || '').trim(); });
-      var libId = card.dataset.libId || '';
+    items.forEach(function (p) {
+      var libId = p.__libId || '';
       var obj = null;
-      // 来源一：进行中项目库（用立项终值覆盖字段后移入归档）
       if (libId) {
         for (var k = 0; k < lib.length; k++) { if (lib[k].id === libId) { obj = lib[k]; lib.splice(k, 1); break; } }
       }
-      // 来源二：归档库已有同 id（同会话重复生成时更新，不重复入库）
       if (!obj && libId) {
         for (var j = 0; j < arch.length; j++) { if (arch[j].id === libId) { obj = arch[j]; break; } }
       }
       var isNew = !obj;
       if (isNew) { obj = { id: libId || uid(), savedAt: new Date().toISOString() }; }
-      if (arch.indexOf(obj) < 0) { arch.push(obj); }  // 来自 lib 的新归档项也要加入数组
+      if (arch.indexOf(obj) < 0) { arch.push(obj); }
       ARCH_FIELDS.forEach(function (f) { if (p[f] !== undefined) obj[f] = p[f]; });
-      delete obj._rid;              // 归档是另一张表，剥离原表记录 id（与看板归档语义一致）
+      delete obj._rid;              // 归档是另一张表，剥离原表记录 id
       obj.archivedAt = now;
-      card.dataset.libId = obj.id;  // 写回卡片：重复生成按同 id 更新
     });
     lsWriteArr(LIB_KEY, lib);
     lsWriteArr(ARCHIVE_KEY, arch);
     if (window.BPISync && BPISync.isCloud()) {
       try { BPISync.pushLibrary(); BPISync.pushArchive(); } catch (e) {}
     }
-    return cards.length;
+    return items.length;
+  }
+
+  function updateArchiveBadge() {
+    var pending = getPending();
+    var btn = $('archiveBtn');
+    if (!btn) return;
+    $('archN').textContent = pending.length;
+    if (pending.length === 0) {
+      btn.style.display = 'none';
+    } else {
+      btn.style.display = '';
+      btn.innerHTML = '📥 待归档 <strong style="color:#dc2626;font-size:16px;">' + pending.length + '</strong> 项 · 归档到「历史项目库」';
+    }
+  }
+
+  function syncArchChk(checked) {
+    document.querySelectorAll('.arch-chk').forEach(function (cb) { cb.checked = checked; });
+  }
+
+  function openArchiveModal() {
+    var pending = getPending();
+    if (!pending.length) { showStatus('当前没有待归档的项目。请先「生成并下载」文件。', true); return; }
+    $('archList').innerHTML = pending.map(function (p, i) {
+      var src = p.__libId ? '<span style="color:#6b7280;font-size:11px;">[来自项目库]</span>' : '<span style="color:#9aa1ab;font-size:11px;">[手动添加]</span>';
+      var amt = p.amount ? Number(p.amount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+      return '<tr style="border-bottom:1px solid #eef0f3;">' +
+        '<td style="padding:10px 8px;width:34px;"><input type="checkbox" class="arch-chk" data-i="' + i + '" checked></td>' +
+        '<td style="padding:10px 8px;">' + escHtml(p.name || '—') + src + '</td>' +
+        '<td style="padding:10px 8px;color:#6b7280;">' + escHtml(p.projCode || '—') + '</td>' +
+        '<td style="padding:10px 8px;color:#6b7280;">' + escHtml(p.clientShort || p.clientName || '—') + '</td>' +
+        '<td style="padding:10px 8px;text-align:right;font-variant-numeric:tabular-nums;">¥ ' + amt + '</td>' +
+        '</tr>';
+    }).join('');
+    $('archConfirmBtn').textContent = '确认归档 ' + pending.length + ' 项';
+    $('archSelectAll').checked = true;
+    $('archiveMask').classList.add('open');
+  }
+  function closeArchiveModal() { $('archiveMask').classList.remove('open'); }
+
+  function confirmArchive() {
+    var pending = getPending();
+    var checked = [];
+    document.querySelectorAll('.arch-chk').forEach(function (cb) {
+      if (cb.checked) {
+        var i = parseInt(cb.getAttribute('data-i'), 10);
+        if (pending[i]) checked.push(pending[i]);
+      }
+    });
+    if (!checked.length) { showStatus('请至少勾选一个要归档的项目。', true); return; }
+    try {
+      var n = archiveOnDone(checked);
+      clearPending();
+      updateArchiveBadge();
+      closeArchiveModal();
+      // 同时清草稿（已立项，意义完成）
+      try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+      showStatus('已归档 ' + n + ' 个项目到「历史项目库」（含项目编号等全部字段）。可到 ③「历史项目库」查看。', false);
+    } catch (e) {
+      showStatus('归档失败：' + (e && e.message ? e.message : e), true);
+    }
   }
 
   function generate() {
@@ -1531,17 +1627,18 @@ var CUSTOMERS = [
       });
       zip.generateAsync({ type: 'blob' }).then(function (blob) {
         downloadBlob(blob, '批量立项文件_' + stamp() + '.zip');
-        var msg = '已生成 ' + files.length + ' 个文件，开始下载压缩包。';
-        try {
-          var archived = archiveOnDone();
-          if (archived > 0) {
-            msg += ' 已自动归档 ' + archived + ' 个项目到「历史项目库」（含项目编号等全部字段，看板①中可查看）。';
-            try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
-          }
-        } catch (e) {
-          msg += '（注意：自动归档到历史项目库失败：' + (e && e.message ? e.message : e) + '）';
-        }
-        showStatus(msg, false);
+        // 把本批项目（含来源库 id）写入「待归档」队列，由用户手动点归档按钮完成归档
+        var cards = $('rows').querySelectorAll('.rowcard');
+        var pending = [];
+        cards.forEach(function (card) {
+          var p = {};
+          card.querySelectorAll('[data-f]').forEach(function (inp) { p[inp.getAttribute('data-f')] = (inp.value || '').trim(); });
+          p.__libId = card.dataset.libId || '';
+          pending.push(p);
+        });
+        setPending(pending);
+        updateArchiveBadge();
+        showStatus('已生成 ' + files.length + ' 个文件，下载完成。本批 ' + pending.length + ' 个项目待归档——请点下方「📥 归档到历史项目库」按钮手动完成。', false);
       }).catch(function (err) {
         showStatus('生成出错：' + (err && err.message ? err.message : err), true);
       }).finally(function () {
@@ -1749,6 +1846,14 @@ var CUSTOMERS = [
     };
     $('gen').onclick = generate;
     $('previewBtn').onclick = preview;
+    // 「归档到历史项目库」手动入口
+    $('archiveBtn').onclick = openArchiveModal;
+    $('archiveX').onclick = closeArchiveModal;
+    $('archCancelBtn').onclick = closeArchiveModal;
+    $('archConfirmBtn').onclick = confirmArchive;
+    $('archSelectAll').onchange = function () { $('archSelectAllFoot').checked = this.checked; syncArchChk(this.checked); };
+    $('archSelectAllFoot').onchange = function () { $('archSelectAll').checked = this.checked; syncArchChk(this.checked); };
+    updateArchiveBadge(); // 刷新待归档徽章（防刷新丢失）
     // ① 区折叠/展开
     $('toggle-g').onclick = function () {
       var body = $('global-body');

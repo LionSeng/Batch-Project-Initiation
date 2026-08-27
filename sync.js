@@ -111,53 +111,71 @@
   }
 
   // 推送某 localStorage -> 对应资料库（增量 upsert / delete），fire-and-forget
+  // 删除基线 = 云端当前全表 record id（首次 push 前先 query 一次），
+  // 否则「先删本地、后首次 push」的场景（如生成器立项后归档）会漏删云端记录。
   var knownRids = { lib: {}, arc: {} };
   var pending = { lib: {}, arc: {} };
+  var pushChains = { lib: Promise.resolve(), arc: Promise.resolve() };
+  var knownReady = { lib: false, arc: false };
+
+  function ensureKnown(dbId, bucket) {
+    if (knownReady[bucket]) return Promise.resolve(knownRids[bucket]);
+    knownReady[bucket] = true; // 只发起一次；失败则退化为「本轮不做删除」，下轮重试
+    return db().query({ databaseId: dbId, pageSize: 200 }).then(function (res) {
+      var recs = (res && res.results) || [];
+      var known = {};
+      recs.forEach(function (r) { if (r && r._id) known[r._id] = true; });
+      knownRids[bucket] = known;
+      return known;
+    }).catch(function () {
+      knownRids[bucket] = {}; // 拉取失败：不删任何云端记录（宁可残留、不误删）
+      return knownRids[bucket];
+    });
+  }
 
   function pushKey(dbId, key, withArchive, bucket) {
     if (!isCloud()) return;
-    var arr;
-    try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
+    pushChains[bucket] = pushChains[bucket].then(function () {
+      return ensureKnown(dbId, bucket);
+    }).then(function (known) {
+      var arr;
+      try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { arr = []; }
 
-    // 首次推送时，用当前本地已有的 _rid 初始化 knownRids（避免误删云上记录）
-    if (!Object.keys(knownRids[bucket]).length) {
-      arr.forEach(function (p) { if (p._rid) knownRids[bucket][p._rid] = true; });
-    }
+      var curRids = {};
+      arr.forEach(function (p) { if (p._rid) curRids[p._rid] = true; });
 
-    var curRids = {};
-    arr.forEach(function (p) { if (p._rid) curRids[p._rid] = true; });
+      // 删除：云端基线里有、本地已没有的记录
+      Object.keys(known).forEach(function (rid) {
+        if (!curRids[rid]) {
+          db().deleteRecord({ databaseId: dbId, recordId: rid }).catch(function () {});
+        }
+      });
 
-    // 删除已不在本地的云记录
-    Object.keys(knownRids[bucket]).forEach(function (rid) {
-      if (!curRids[rid]) {
-        db().deleteRecord({ databaseId: dbId, recordId: rid }).catch(function () {});
-      }
-    });
+      // 新增 / 更新
+      arr.forEach(function (p) {
+        var props = toDB(p, withArchive);
+        if (p._rid) {
+          db().updateRecord({ databaseId: dbId, recordId: p._rid, properties: props }).catch(function () {});
+        } else if (!pending[bucket][p.id]) {
+          pending[bucket][p.id] = true;
+          db().addRecord({ databaseId: dbId, properties: props }).then(function (r) {
+            var nid = newIdOf(r);
+            if (nid) {
+              p._rid = nid;
+              knownRids[bucket][nid] = true;
+              try {
+                var cur = JSON.parse(localStorage.getItem(key) || '[]');
+                for (var i = 0; i < cur.length; i++) { if (cur[i].id === p.id) { cur[i]._rid = nid; break; } }
+                localStorage.setItem(key, JSON.stringify(cur));
+              } catch (e) {}
+            }
+            pending[bucket][p.id] = false;
+          }).catch(function () { pending[bucket][p.id] = false; });
+        }
+      });
 
-    // 新增 / 更新
-    arr.forEach(function (p) {
-      var props = toDB(p, withArchive);
-      if (p._rid) {
-        db().updateRecord({ databaseId: dbId, recordId: p._rid, properties: props }).catch(function () {});
-      } else if (!pending[bucket][p.id]) {
-        pending[bucket][p.id] = true;
-        db().addRecord({ databaseId: dbId, properties: props }).then(function (r) {
-          var nid = newIdOf(r);
-          if (nid) {
-            p._rid = nid;
-            knownRids[bucket][nid] = true;
-            try {
-              var cur = JSON.parse(localStorage.getItem(key) || '[]');
-              for (var i = 0; i < cur.length; i++) { if (cur[i].id === p.id) { cur[i]._rid = nid; break; } }
-              localStorage.setItem(key, JSON.stringify(cur));
-            } catch (e) {}
-          }
-          pending[bucket][p.id] = false;
-        }).catch(function () { pending[bucket][p.id] = false; });
-      }
-    });
-
-    knownRids[bucket] = curRids;
+      knownRids[bucket] = curRids;
+    }).catch(function () {});
   }
 
   function pushLibrary() { pushKey(LIB_DB_ID, LIB_KEY, false, 'lib'); }

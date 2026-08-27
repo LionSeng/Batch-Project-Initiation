@@ -1441,6 +1441,53 @@ var CUSTOMERS = [
     setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   }
 
+  /* ---------- 立项完成 → 自动归档到「历史项目库」 ----------
+   * 下载文件成功后调用：把本批项目（含最终确认的项目编号/金额等全部字段）
+   * 写入 bpi_archive_v1 历史归档库；来自项目库的项目同时从「进行中项目库」移除。
+   * 语义与看板「归档」一致（delete _rid + archivedAt）。在线版同步推资料库两张表。 */
+  var ARCHIVE_KEY = 'bpi_archive_v1';
+  var ARCH_FIELDS = ['name', 'projCode', 'clientName', 'clientShort', 'clientCode', 'clientNature',
+    'startDate', 'endDate', 'amount', 'budget', 'costRate', 'finalAmount', 'p1', 'p2', 'p3', 'p4', 'p5'];
+
+  function uid() { return 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7); }
+  function lsReadArr(key) { try { var s = localStorage.getItem(key); return s ? JSON.parse(s) : []; } catch (e) { return []; } }
+  function lsWriteArr(key, arr) { try { localStorage.setItem(key, JSON.stringify(arr)); return true; } catch (e) { return false; } }
+
+  function archiveOnDone() {
+    var cards = $('rows').querySelectorAll('.rowcard');
+    if (!cards.length) return 0;
+    var lib = lsReadArr(LIB_KEY);
+    var arch = lsReadArr(ARCHIVE_KEY);
+    var now = Date.now();
+    cards.forEach(function (card) {
+      var p = {};
+      card.querySelectorAll('[data-f]').forEach(function (inp) { p[inp.getAttribute('data-f')] = (inp.value || '').trim(); });
+      var libId = card.dataset.libId || '';
+      var obj = null;
+      // 来源一：进行中项目库（用立项终值覆盖字段后移入归档）
+      if (libId) {
+        for (var k = 0; k < lib.length; k++) { if (lib[k].id === libId) { obj = lib[k]; lib.splice(k, 1); break; } }
+      }
+      // 来源二：归档库已有同 id（同会话重复生成时更新，不重复入库）
+      if (!obj && libId) {
+        for (var j = 0; j < arch.length; j++) { if (arch[j].id === libId) { obj = arch[j]; break; } }
+      }
+      var isNew = !obj;
+      if (isNew) { obj = { id: libId || uid(), savedAt: new Date().toISOString() }; }
+      if (arch.indexOf(obj) < 0) { arch.push(obj); }  // 来自 lib 的新归档项也要加入数组
+      ARCH_FIELDS.forEach(function (f) { if (p[f] !== undefined) obj[f] = p[f]; });
+      delete obj._rid;              // 归档是另一张表，剥离原表记录 id（与看板归档语义一致）
+      obj.archivedAt = now;
+      card.dataset.libId = obj.id;  // 写回卡片：重复生成按同 id 更新
+    });
+    lsWriteArr(LIB_KEY, lib);
+    lsWriteArr(ARCHIVE_KEY, arch);
+    if (window.BPISync && BPISync.isCloud()) {
+      try { BPISync.pushLibrary(); BPISync.pushArchive(); } catch (e) {}
+    }
+    return cards.length;
+  }
+
   function generate() {
     var g = readGlobal();
     var projects = readProjects();
@@ -1484,7 +1531,17 @@ var CUSTOMERS = [
       });
       zip.generateAsync({ type: 'blob' }).then(function (blob) {
         downloadBlob(blob, '批量立项文件_' + stamp() + '.zip');
-        showStatus('已生成 ' + files.length + ' 个文件，开始下载压缩包。', false);
+        var msg = '已生成 ' + files.length + ' 个文件，开始下载压缩包。';
+        try {
+          var archived = archiveOnDone();
+          if (archived > 0) {
+            msg += ' 已自动归档 ' + archived + ' 个项目到「历史项目库」（含项目编号等全部字段，看板①中可查看）。';
+            try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+          }
+        } catch (e) {
+          msg += '（注意：自动归档到历史项目库失败：' + (e && e.message ? e.message : e) + '）';
+        }
+        showStatus(msg, false);
       }).catch(function (err) {
         showStatus('生成出错：' + (err && err.message ? err.message : err), true);
       }).finally(function () {
@@ -1598,6 +1655,7 @@ var CUSTOMERS = [
       var out = items.map(function (x) {
         var d = {};
         for (var k in x) if (k !== 'id' && k !== 'savedAt') d[k] = x[k];
+        d.__libId = x.id || '';  // 保留来源库 id：立项完成后据此把项目从「进行中库」移入「历史归档库」
         return d;
       });
       return out;
@@ -1665,7 +1723,7 @@ var CUSTOMERS = [
     var queued = consumeQueue();
     if (queued.length) {
       $('rows').innerHTML = '';
-      queued.forEach(function (p) { addRow(p); });
+      queued.forEach(function (p) { var card = addRow(p); if (p.__libId) { card.dataset.libId = p.__libId; } });
       showStatus('已根据你从看板选择的 ' + queued.length + ' 个项目预填立项行，请核对客户与金额后生成。', false);
       $('rows').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else if (restoreDraft()) {
